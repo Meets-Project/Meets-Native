@@ -1,0 +1,49 @@
+services:
+  backend:
+    build:
+      context: ../snack/backend
+      dockerfile: Dockerfile
+    container_name: meets_backend
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Firestore - escolha uma opção:
+      # Opção 1: Firestore real (descomentar e configurar)
+      # - FIREBASE_SERVICE_ACCOUNT_BASE64=${FIREBASE_SERVICE_ACCOUNT_BASE64}
+      
+      # Opção 2: Firestore Emulator
+      - FIREBASE_PROJECT_ID=snack-local
+      - FIRESTORE_EMULATOR_HOST=host.docker.internal:8080
+    ports:
+      - "3000:3000"
+    networks:
+      - meets_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../snack/backend/src:/app/src
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../snack
+      dockerfile: Dockerfile
+    container_name: meets_frontend
+    environment:
+      - EXPO_TUNNEL=false
+      - EXPO_PUBLIC_USE_INTERNAL_API=true
+      - API_PROXY_TARGET=http://backend:3000
+    ports:
+      - "8081:8081"
+    networks:
+      - meets_network
+    depends_on:
+      - backend
+    volumes:
+      - ../snack:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+networks:
+  meets_network:
+    driver: bridge

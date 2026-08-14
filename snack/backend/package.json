@@ -1,0 +1,21 @@
+{
+  "name": "meets-backend",
+  "version": "1.0.0",
+  "description": "Backend Express para o aplicativo Meets",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch src/server.js",
+    "start": "bun src/server.js",
+    "dev:emulator": "FIREBASE_PROJECT_ID=snack-local FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 bun --watch src/server.js",
+    "firestore:emulator": "bunx firebase-tools emulators:start --only firestore --project snack-local",
+    "test": "node --test",
+    "test:colab": "node --test tests/colab.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "firebase-admin": "^12.7.0"
+  }
+}

@@ -1,0 +1,49 @@
+FROM node:20-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_HOME=/opt/android-sdk \
+    JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+    PATH=/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/emulator:/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk \
+    wget \
+    unzip \
+    zip \
+    git \
+    curl \
+    bash \
+    libc6 \
+    libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/android-sdk/cmdline-tools && \
+    cd /tmp && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip && \
+    unzip -q cmdline-tools.zip -d /opt/android-sdk/cmdline-tools && \
+    mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest && \
+    rm -f cmdline-tools.zip
+
+RUN yes | sdkmanager --licenses >/dev/null && \
+    sdkmanager --sdk_root=${ANDROID_SDK_ROOT} \
+      "platform-tools" \
+      "platforms;android-34" \
+      "build-tools;34.0.0" \
+      "cmdline-tools;latest"
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY . .
+
+RUN npm install -g eas-cli
+
+# Gera o prebuild Android e deixa o projeto pronto para assembleRelease.
+# Para criar o APK dentro do container, rode:
+#   docker build -f Dockerfile.apk -t meets-apk .
+#   docker run --rm -it -v "$PWD":/app meets-apk bash
+#   cd android && ./gradlew assembleRelease
+CMD ["bash"]
