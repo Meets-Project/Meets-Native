@@ -1,16 +1,5 @@
-import { Platform, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { colors } from './colors';
-
-const navShadow = Platform.select({
-  web: { boxShadow: '0px -2px 8px rgba(0,0,0,0.06)' },
-  default: {
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-});
 
 export const bottomNavStyles = StyleSheet.create({
   container: {
@@ -25,7 +14,11 @@ export const bottomNavStyles = StyleSheet.create({
     paddingBottom: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    ...navShadow,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
   item: {
     alignItems: 'center',

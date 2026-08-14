@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { screenStyles } from '../styles/screenStyles';
@@ -12,53 +12,6 @@ function buildAchievements(user) {
     { id: 'connections', title: 'Conector da comunidade', subtitle: `${user.connections || 0} conexões ativas` },
     { id: 'rating', title: 'Mentor ativo', subtitle: `${(user.rating || 0).toFixed(1)} de avaliação média` },
   ];
-}
-
-function isRenderableImageUri(uri) {
-  return typeof uri === 'string' && (uri.startsWith('data:') || uri.startsWith('http://') || uri.startsWith('https://'));
-}
-
-function profileItemLabel(item) {
-  if (!item) return 'Item';
-  return item.title || item.name || item.folderName || item.creation?.title || item.creation?.name || 'Item';
-}
-
-function profileItemSubtitle(item) {
-  if (!item) return '';
-  return item.subtitle || item.content || item.role || item.creation?.content || item.creation?.details || item.creation?.summary || item.creation?.description || '';
-}
-
-function ProfileContentCard({ item, accentColor }) {
-  return (
-    <View style={[screenStyles.sectionCard, { borderLeftWidth: 4, borderLeftColor: accentColor, marginBottom: 10 }]}> 
-      <Text style={screenStyles.rowTitle}>{profileItemLabel(item)}</Text>
-      {profileItemSubtitle(item) ? <Text style={screenStyles.rowSubtitle}>{profileItemSubtitle(item)}</Text> : null}
-    </View>
-  );
-}
-
-function ProfileSection({ title, accentColor, created, tagged, createdLabel, taggedLabel, emptyText }) {
-  const hasCreated = Array.isArray(created) && created.length > 0;
-  const hasTagged = Array.isArray(tagged) && tagged.length > 0;
-
-  return (
-    <View style={screenStyles.sectionCard}>
-      <Text style={screenStyles.sectionTitle}>{title}</Text>
-
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <View style={{ backgroundColor: accentColor, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{createdLabel}</Text>
-        </View>
-        <View style={{ backgroundColor: '#f1f1f1', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-          <Text style={{ color: '#444', fontWeight: '700', fontSize: 12 }}>{taggedLabel}</Text>
-        </View>
-      </View>
-
-      {hasCreated ? created.map((item) => <ProfileContentCard key={`created-${item.id}`} item={item} accentColor={accentColor} />) : null}
-      {hasTagged ? tagged.map((item) => <ProfileContentCard key={`tagged-${item.id}`} item={item} accentColor="#6c63ff" />) : null}
-      {!hasCreated && !hasTagged ? <Text style={screenStyles.rowSubtitle}>{emptyText}</Text> : null}
-    </View>
-  );
 }
 
 export function ProfileScreen() {
@@ -117,31 +70,18 @@ export function ProfileScreen() {
     role: 'Perfil indisponível',
     city: 'Cidade não informada',
     avatar: '👤',
-    avatarUri: '',
     connections: 0,
     eventsCount: 0,
     rating: 0,
     bio: '',
   };
-  const profileCreations = Array.isArray(profile.creations) ? profile.creations : [];
-  const postsCreated = profileCreations.filter((creation) => creation?.mode === 'post');
-  const meetsCreated = profileCreations.filter((creation) => creation?.mode === 'meet');
-  const roomsCreated = profileCreations.filter((creation) => creation?.mode === 'virtual-room');
-  const taggedPosts = Array.isArray(profile.taggedPosts) ? profile.taggedPosts : Array.isArray(profile.taggedCreations) ? profile.taggedCreations.filter((item) => item?.mode === 'post') : [];
-  const meetsParticipated = Array.isArray(profile.participatedMeets) ? profile.participatedMeets : [];
-  const roomsParticipated = Array.isArray(profile.participatedRooms) ? profile.participatedRooms : Array.isArray(profile.participatedVirtualRooms) ? profile.participatedVirtualRooms : [];
-  const savedItems = Array.isArray(profile.savedItems) ? profile.savedItems : [];
   const achievements = buildAchievements(profile);
 
   return (
     <ScrollView contentContainerStyle={screenStyles.listContent} showsVerticalScrollIndicator={false}>
       <View style={screenStyles.profileHeroCard}>
         <View style={screenStyles.profileAvatarWrap}>
-          {isRenderableImageUri(profile.avatarUri) ? (
-            <Image source={{ uri: profile.avatarUri }} style={{ width: 92, height: 92, borderRadius: 46 }} />
-          ) : (
-            <Text style={screenStyles.profileAvatar}>{profile.avatar || '👤'}</Text>
-          )}
+          <Text style={screenStyles.profileAvatar}>{profile.avatar || '👤'}</Text>
         </View>
         <Text style={screenStyles.profileName}>{profile.name}</Text>
         <Text style={screenStyles.profileRole}>{profile.role}</Text>
@@ -207,49 +147,6 @@ export function ProfileScreen() {
             <Text style={screenStyles.quickActionText}>Histórico</Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      <ProfileSection
-        title="Posts"
-        accentColor="#2f80ed"
-        created={postsCreated}
-        tagged={taggedPosts}
-        createdLabel="Criei"
-        taggedLabel="Fui marcado"
-        emptyText="Nenhum post criado ou marcado ainda."
-      />
-
-      <ProfileSection
-        title="Meets"
-        accentColor="#27ae60"
-        created={meetsCreated}
-        tagged={meetsParticipated}
-        createdLabel="Criei"
-        taggedLabel="Participei"
-        emptyText="Nenhum meet criado ou participado ainda."
-      />
-
-      <ProfileSection
-        title="Salas virtuais"
-        accentColor="#9b51e0"
-        created={roomsCreated}
-        tagged={roomsParticipated}
-        createdLabel="Criei"
-        taggedLabel="Participei"
-        emptyText="Nenhuma sala virtual criada ou participada ainda."
-      />
-
-      <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>Salvos</Text>
-        {savedItems.length > 0 ? (
-          savedItems.map((item) => (
-            <View key={item.id} style={{ marginBottom: 10 }}>
-              <ProfileContentCard item={item} accentColor="#f2c94c" />
-            </View>
-          ))
-        ) : (
-          <Text style={screenStyles.rowSubtitle}>Nenhum item salvo ainda.</Text>
-        )}
       </View>
 
       <View style={screenStyles.sectionCard}>

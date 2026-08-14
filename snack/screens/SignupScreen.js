@@ -4,7 +4,6 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
 import { colors } from '../styles/colors';
-import { register } from '../services/auth';
 import { updateCurrentUser } from '../services/userApi';
 
 export function SignupScreen() {
@@ -12,7 +11,6 @@ export function SignupScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -21,32 +19,14 @@ export function SignupScreen() {
     setMessage('');
 
     try {
-      if (!name.trim()) {
-        setMessage('Informe seu nome.');
-        return;
-      }
-
-      if (!email.trim() || password.trim().length < 6) {
-        setMessage('Informe um email válido e senha com ao menos 6 caracteres.');
-        return;
-      }
-
-      if (password !== confirmPassword) {
-        setMessage('As senhas não coincidem');
-        return;
-      }
-
-      const authUser = await register(email, password);
-
       await updateCurrentUser({
         name: name.trim(),
-        email: authUser.email || email.trim(),
-        isGuest: false,
+        email: email.trim(),
       });
 
       navigation.replace('MainTabs', { screen: 'profile' });
     } catch (error) {
-      setMessage(error.message || 'Não foi possível cadastrar.');
+      setMessage(error.message);
     } finally {
       setIsSaving(false);
     }
@@ -96,18 +76,6 @@ export function SignupScreen() {
             value={password}
             onChangeText={setPassword}
             placeholder="Crie uma senha"
-            placeholderTextColor="#9a9a9a"
-            secureTextEntry
-          />
-        </View>
-
-        <View style={authStyles.field}>
-          <Text style={authStyles.fieldLabel}>Confirme a senha</Text>
-          <TextInput
-            style={authStyles.fieldInput}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            placeholder="Repita a senha"
             placeholderTextColor="#9a9a9a"
             secureTextEntry
           />

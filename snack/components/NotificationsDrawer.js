@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions, Platform } from 'react-native';
+import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { notificationsDrawerStyles } from '../styles/notificationsDrawerStyles';
@@ -19,12 +19,12 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
         Animated.timing(slideAnim, {
           toValue: 1,
           duration: 300,
-          useNativeDriver: Platform.OS !== 'web',
+          useNativeDriver: true,
         }),
         Animated.timing(opacityAnim, {
           toValue: 1,
           duration: 300,
-          useNativeDriver: Platform.OS !== 'web',
+          useNativeDriver: true,
         }),
       ]).start();
     } else {
@@ -32,12 +32,12 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: Platform.OS !== 'web',
+          useNativeDriver: true,
         }),
         Animated.timing(opacityAnim, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: Platform.OS !== 'web',
+          useNativeDriver: true,
         }),
       ]).start();
     }
