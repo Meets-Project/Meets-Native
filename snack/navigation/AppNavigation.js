@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
@@ -11,7 +11,6 @@ import { LoadingScreen } from '../screens/LoadingScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { CreateFlowScreen } from '../screens/CreateFlowScreen';
-import { CreatePostScreen, CreateMeetScreen, CreateVirtualRoomScreen } from '../screens/CreateActionScreens';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ShareProfileScreen } from '../screens/ShareProfileScreen';
 import { HomeScreen } from '../screens/HomeScreen';
@@ -20,7 +19,6 @@ import { CreateScreen } from '../screens/CreateScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { FavoritesScreen } from '../screens/FavoritesScreen';
-import { CommentsScreen } from '../screens/CommentsScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { SavesScreen } from '../screens/SavesScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -30,6 +28,7 @@ import { menuItems } from '../data/menuItens';
 import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
 import { appStyles } from '../styles/appStyles';
+import { getNotifications } from '../services/api';
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -58,6 +57,8 @@ function MainTabs() {
 export default function AppNavigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  useEffect(() => { if (!isNotificationsOpen) return; getNotifications().then(setNotifications).catch(() => setNotifications([])); }, [isNotificationsOpen]);
   const navigationRef = createNavigationContainerRef();
   const [currentRouteName, setCurrentRouteName] = useState('Loading');
 
@@ -73,12 +74,8 @@ export default function AppNavigation() {
     if (tabTitles[routeName]) return tabTitles[routeName];
     const detailTitles = {
       CreateFlow: 'Criar',
-      CreatePost: 'Criar post',
-      CreateMeet: 'Criar meet',
-      CreateVirtualRoom: 'Sala virtual',
       EditProfile: 'Editar perfil',
       ShareProfile: 'Compartilhar perfil',
-      Comments: 'Comentários',
     };
     if (detailTitles[routeName]) return detailTitles[routeName];
     const menu = menuItems.find((m) => m.id === routeName);
@@ -132,14 +129,10 @@ export default function AppNavigation() {
           <Stack.Screen name="MainTabs" component={MainTabs} />
 
           <Stack.Screen name="CreateFlow" component={CreateFlowScreen} />
-          <Stack.Screen name="CreatePost" component={CreatePostScreen} />
-          <Stack.Screen name="CreateMeet" component={CreateMeetScreen} />
-          <Stack.Screen name="CreateVirtualRoom" component={CreateVirtualRoomScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="ShareProfile" component={ShareProfileScreen} />
 
           <Stack.Screen name="favorites" component={FavoritesScreen} />
-          <Stack.Screen name="Comments" component={CommentsScreen} />
           <Stack.Screen name="history" component={HistoryScreen} />
           <Stack.Screen name="saves" component={SavesScreen} />
           <Stack.Screen name="settings" component={SettingsScreen} />
@@ -172,6 +165,7 @@ export default function AppNavigation() {
 
             <NotificationsDrawer
               isOpen={isNotificationsOpen}
+              notifications={notifications}
               onClose={() => setIsNotificationsOpen(false)}
             />
           </>

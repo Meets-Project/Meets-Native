@@ -10,9 +10,9 @@ export function CreateScreen() {
   const navigation = useNavigation();
 
   const routeMap = {
-    1: 'CreatePost',
-    2: 'CreateMeet',
-    3: 'CreateVirtualRoom',
+    1: { screen: 'CreateFlow', params: { mode: 'event', title: 'Criar Evento' } },
+    2: { screen: 'CreateFlow', params: { mode: 'live', title: 'Abrir Sala Ao Vivo' } },
+    3: { screen: 'CreateFlow', params: { mode: 'post', title: 'Publicar Atualização' } },
   };
 
   return (
@@ -34,7 +34,10 @@ export function CreateScreen() {
           </View>
           <TouchableOpacity
             style={screenStyles.createButton}
-            onPress={() => navigation.navigate(routeMap[item.id])}
+            onPress={() => {
+              const target = routeMap[item.id];
+              if (target) navigation.navigate(target.screen, target.params);
+            }}
           >
             <Text style={screenStyles.createButtonText}>Começar</Text>
           </TouchableOpacity>
@@ -44,7 +47,7 @@ export function CreateScreen() {
         <View style={screenStyles.sectionCard}>
           <Text style={screenStyles.sectionTitle}>Ferramentas de criação</Text>
           <Text style={screenStyles.sectionText}>
-            Escolha o formato ideal para criar um post, organizar um meet ou abrir uma sala virtual.
+            Escolha o formato ideal para organizar encontros e manter sua comunidade ativa.
           </Text>
         </View>
       }

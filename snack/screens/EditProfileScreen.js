@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, Alert } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
@@ -10,39 +10,9 @@ export function EditProfileScreen() {
   const navigation = useNavigation();
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
-  const [avatar, setAvatar] = useState('');
-  const [avatarUri, setAvatarUri] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
-
-  function isRenderableImageUri(uri) {
-    return typeof uri === 'string' && (uri.startsWith('data:') || uri.startsWith('http://') || uri.startsWith('https://'));
-  }
-
-  function pickAvatar() {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') {
-      Alert.alert('Sem suporte', 'No mobile, use um link de imagem para o avatar.');
-      return;
-    }
-
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = (event) => {
-      const file = event?.target?.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = typeof reader.result === 'string' ? reader.result : '';
-        setAvatarUri(result);
-        setAvatar('');
-      };
-      reader.readAsDataURL(file);
-    };
-    input.click();
-  }
 
   useEffect(() => {
     let isActive = true;
@@ -57,8 +27,6 @@ export function EditProfileScreen() {
 
         setName(profile.name || '');
         setRole(profile.role || '');
-        setAvatar(profile.avatar && !isRenderableImageUri(profile.avatarUri) ? profile.avatar : '');
-        setAvatarUri(profile.avatarUri || '');
       } catch (error) {
         if (isActive) {
           setMessage(error.message);
@@ -85,8 +53,6 @@ export function EditProfileScreen() {
       await updateCurrentUser({
         name,
         role,
-        avatar: avatarUri ? '🖼️' : avatar,
-        avatarUri,
       });
       navigation.goBack();
     } catch (error) {
@@ -116,20 +82,6 @@ export function EditProfileScreen() {
       </View>
 
       <View style={authStyles.card}>
-        <TouchableOpacity
-          onPress={pickAvatar}
-          style={{ alignSelf: 'center', marginBottom: 16, alignItems: 'center' }}
-        >
-          <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: '#f2f2f2', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-            {isRenderableImageUri(avatarUri) ? (
-              <Image source={{ uri: avatarUri }} style={{ width: 96, height: 96 }} />
-            ) : (
-              <Text style={{ fontSize: 42 }}>{avatar || '👤'}</Text>
-            )}
-          </View>
-          <Text style={authStyles.footerLink}>Alterar foto do perfil</Text>
-        </TouchableOpacity>
-
         <View style={authStyles.field}>
           <Text style={authStyles.fieldLabel}>Nome</Text>
           <TextInput
@@ -148,17 +100,6 @@ export function EditProfileScreen() {
             value={role}
             onChangeText={setRole}
             placeholder="Organizador de Meetups"
-            placeholderTextColor="#9a9a9a"
-          />
-        </View>
-
-        <View style={authStyles.field}>
-          <Text style={authStyles.fieldLabel}>Avatar texto/emoji</Text>
-          <TextInput
-            style={authStyles.fieldInput}
-            value={avatar}
-            onChangeText={setAvatar}
-            placeholder="🙂"
             placeholderTextColor="#9a9a9a"
           />
         </View>

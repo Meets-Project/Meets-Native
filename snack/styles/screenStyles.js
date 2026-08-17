@@ -1,27 +1,5 @@
-import { Platform, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { colors } from './colors';
-
-const sectionShadow = Platform.select({
-  web: { boxShadow: '0px 2px 8px rgba(0,0,0,0.06)' },
-  default: {
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-});
-
-const profileHeroShadow = Platform.select({
-  web: { boxShadow: '0px 2px 8px rgba(0,0,0,0.06)' },
-  default: {
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-});
 
 export const screenStyles = StyleSheet.create({
   listContent: {
@@ -55,7 +33,11 @@ export const screenStyles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
-    ...sectionShadow,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 16,
@@ -125,7 +107,11 @@ export const screenStyles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     marginBottom: 16,
-    ...profileHeroShadow,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
     alignItems: 'center',
   },
   profileAvatarWrap: {

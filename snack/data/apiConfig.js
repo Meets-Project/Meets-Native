@@ -8,26 +8,28 @@ function getDefaultHost() {
   return 'localhost';
 }
 
-function shouldUseInternalApi() {
-  return process.env.EXPO_PUBLIC_USE_INTERNAL_API === 'true';
-}
-
 function normalizeBackendBaseUrl(url) {
   return url.replace(/\/api\/?$/, '').replace(/\/$/, '');
 }
 
 export function getBackendBaseUrl() {
-  if (shouldUseInternalApi()) {
+  // Aplicação Web dentro do Docker/Nginx
+  if (Platform.OS === 'web') {
     return '/api';
   }
 
-  const publicApiUrl = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_BACKEND_URL;
+  // URL definida explicitamente
+  const publicApiUrl =
+    process.env.EXPO_PUBLIC_API_URL ||
+    process.env.EXPO_PUBLIC_BACKEND_URL;
 
   if (publicApiUrl && publicApiUrl.trim().length > 0) {
     return normalizeBackendBaseUrl(publicApiUrl.trim());
   }
 
+  // Android Emulator
   const host = getDefaultHost();
-  const port = '3333';
+  const port = '3334';
+
   return `http://${host}:${port}`;
 }

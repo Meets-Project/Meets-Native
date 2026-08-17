@@ -1,19 +1,34 @@
-# Frontend (Expo)
-FROM node:20-alpine
+# ================================
+# Build do frontend Expo
+# ================================
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copiar package.json
-COPY package.json .
+COPY package*.json ./
 
-# Instalar dependências
 RUN npm install
 
-# Copiar código
 COPY . .
 
-# Expor porta (Expo dev server padrão)
-EXPOSE 8081
+# Gera a versão web do Expo
+RUN npx expo export --platform web
 
-# Comando para iniciar
-CMD ["node", "web-server.js"]
+
+# ================================
+# Servidor do frontend
+# ================================
+FROM nginx:alpine
+
+# Remove configuração padrão
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copia frontend compilado
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Configuração para SPA
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

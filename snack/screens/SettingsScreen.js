@@ -1,14 +1,6 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React,{useCallback,useState} from 'react';
+import { ActivityIndicator,Switch,Text,View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { screenStyles } from '../styles/screenStyles';
-
-export function SettingsScreen() {
-  return (
-    <View style={[screenStyles.listContent]}> 
-      <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>Configurações</Text>
-        <Text style={screenStyles.sectionText}>Aqui você encontrará opções do aplicativo.</Text>
-      </View>
-    </View>
-  );
-}
+import { getSettings,updateSettings } from '../services/api';
+export function SettingsScreen(){const [s,setS]=useState(null);useFocusEffect(useCallback(()=>{let a=true;(async()=>{try{const x=await getSettings();if(a)setS(x);}catch{if(a)setS({notifications_enabled:true,dark_mode:false});}})();return()=>{a=false;};},[]));async function change(key,value){setS(x=>({...x,[key]:value}));try{await updateSettings({notificationsEnabled:key==='notifications_enabled'?value:s.notifications_enabled,darkMode:key==='dark_mode'?value:s.dark_mode});}catch{setS(x=>({...x,[key]:!value}));}}if(!s)return <View style={[screenStyles.listContent,{alignItems:'center'}]}><ActivityIndicator/></View>;return <View style={screenStyles.listContent}><View style={screenStyles.sectionCard}><Text style={screenStyles.sectionTitle}>Configurações</Text><View style={screenStyles.rowItem}><Text style={screenStyles.rowTitle}>Notificações</Text><Switch value={!!s.notifications_enabled} onValueChange={v=>change('notifications_enabled',v)}/></View><View style={screenStyles.rowItem}><Text style={screenStyles.rowTitle}>Modo escuro</Text><Switch value={!!s.dark_mode} onValueChange={v=>change('dark_mode',v)}/></View><Text style={screenStyles.sectionText}>Preferências são persistidas no PostgreSQL.</Text></View></View>;}

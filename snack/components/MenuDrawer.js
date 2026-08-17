@@ -1,49 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Image, Text, View, TouchableOpacity, ScrollView, Animated, Dimensions, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { menuDrawerStyles } from '../styles/menuDrawerStyles';
 import { colors } from '../styles/colors';
 import { menuItems } from '../data/menuItens'
 import { useNavigation } from '@react-navigation/native';
-import AccountsModal from './AccountsModal';
-import { fetchCurrentUser } from '../services/userApi';
 
 export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
   const navigation = useNavigation();
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
-  const [accountsVisible, setAccountsVisible] = useState(false);
-  const [user, setUser] = useState({
-    name: 'Você',
-    avatar: '🙂',
-    avatarUri: '',
-  });
 
   useEffect(() => {
-    let isActive = true;
-
-    async function loadUser() {
-      try {
-        const profile = await fetchCurrentUser();
-        if (!isActive || !profile) return;
-
-        setUser({
-          name: profile.name || 'Você',
-          avatar: profile.avatar || '🙂',
-          avatarUri: profile.avatarUri || '',
-        });
-      } catch (_error) {
-        if (isActive) {
-          setUser({ name: 'Você', avatar: '🙂', avatarUri: '' });
-        }
-      }
-    }
-
-    if (isOpen) {
-      loadUser();
-    }
-
     if (isOpen) {
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -71,9 +40,6 @@ export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
         }),
       ]).start();
     }
-    return () => {
-      isActive = false;
-    };
   }, [isOpen, slideAnim, opacityAnim]);
 
   const drawerWidth = Math.min(screenWidth * 0.75, 320);
@@ -85,6 +51,11 @@ export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
   if (!isOpen && opacityAnim.__getValue() === 0) {
     return null;
   }
+
+  const user = {
+    name: 'Você',
+    avatar: '🙂',
+  };
 
   return (
     <>
@@ -121,23 +92,18 @@ export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
         <TouchableOpacity
           style={menuDrawerStyles.profileContainer}
           onPress={() => {
-            setAccountsVisible(true);
+            if (onSelectItem) onSelectItem('profile');
+            onClose();
           }}
         >
           <View style={menuDrawerStyles.avatar}>
-            {user.avatarUri ? (
-              <Image source={{ uri: user.avatarUri }} style={{ width: 48, height: 48 }} />
-            ) : (
-              <Text style={menuDrawerStyles.avatarText}>{user.avatar}</Text>
-            )}
+            <Text style={menuDrawerStyles.avatarText}>{user.avatar}</Text>
           </View>
           <View style={{ marginLeft: 12 }}>
             <Text style={menuDrawerStyles.userName}>{user.name}</Text>
-            <Text style={menuDrawerStyles.userSub}>Gerenciar contas</Text>
+            <Text style={menuDrawerStyles.userSub}>Ver perfil</Text>
           </View>
         </TouchableOpacity>
-
-        <AccountsModal visible={accountsVisible} onClose={() => setAccountsVisible(false)} />
 
         <ScrollView style={menuDrawerStyles.content}>
           {menuItems.map((item) => (
