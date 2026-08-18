@@ -11,6 +11,7 @@ import { LoadingScreen } from '../screens/LoadingScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { CreateFlowScreen } from '../screens/CreateFlowScreen';
+import { ImageEditorScreen } from '../screens/ImageEditorScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ShareProfileScreen } from '../screens/ShareProfileScreen';
 import { HomeScreen } from '../screens/HomeScreen';
@@ -28,10 +29,11 @@ import { menuItems } from '../data/menuItens';
 import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
 import { appStyles } from '../styles/appStyles';
-import { getNotifications } from '../services/api';
+import { getNotifications, onUnauthorized } from '../services/api';
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
+const navigationRef = createNavigationContainerRef();
 
 function MainTabs() {
   return (
@@ -59,8 +61,14 @@ export default function AppNavigation() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   useEffect(() => { if (!isNotificationsOpen) return; getNotifications().then(setNotifications).catch(() => setNotifications([])); }, [isNotificationsOpen]);
-  const navigationRef = createNavigationContainerRef();
   const [currentRouteName, setCurrentRouteName] = useState('Loading');
+
+  useEffect(() => {
+    return onUnauthorized(() => {
+      if (!navigationRef.isReady()) return;
+      navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+    });
+  }, []);
 
   const getTitleForRoute = (routeName) => {
     if (routeName === 'MainTabs') return 'Resenha';
@@ -74,6 +82,7 @@ export default function AppNavigation() {
     if (tabTitles[routeName]) return tabTitles[routeName];
     const detailTitles = {
       CreateFlow: 'Criar',
+      ImageEditor: 'Editor de imagem',
       EditProfile: 'Editar perfil',
       ShareProfile: 'Compartilhar perfil',
     };
@@ -129,6 +138,7 @@ export default function AppNavigation() {
           <Stack.Screen name="MainTabs" component={MainTabs} />
 
           <Stack.Screen name="CreateFlow" component={CreateFlowScreen} />
+          <Stack.Screen name="ImageEditor" component={ImageEditorScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="ShareProfile" component={ShareProfileScreen} />
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions } from 'react-native';
+import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { notificationsDrawerStyles } from '../styles/notificationsDrawerStyles';
@@ -10,6 +10,7 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
+  const useNativeDriver = Platform.OS !== 'web';
   const items = notifications.map(n => ({...n, message: n.body ? `${n.title}: ${n.body}` : n.title, timestamp: new Date(n.created_at).toLocaleString('pt-BR'), unread: !n.read_at, type: 'profile', icon: 'bell-outline'}));
 
   useEffect(() => {
@@ -18,12 +19,12 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
         Animated.timing(slideAnim, {
           toValue: 1,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(opacityAnim, {
           toValue: 1,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ]).start();
     } else {
@@ -31,12 +32,12 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(opacityAnim, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ]).start();
     }

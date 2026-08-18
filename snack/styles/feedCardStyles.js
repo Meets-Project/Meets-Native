@@ -40,10 +40,11 @@ export const feedCardStyles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 12,
   },
+  cardImageImage: { width: '100%', height: 260 },
   cardImage: {
     backgroundColor: colors.primarySoft,
     borderRadius: 8,
-    padding: 40,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,

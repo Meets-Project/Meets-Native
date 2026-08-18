@@ -2,6 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getBackendBaseUrl } from '../data/apiConfig';
 
 const TOKEN_KEY = '@meets/auth_token';
+let unauthorizedHandler = null;
+
+export function onUnauthorized(handler) {
+  unauthorizedHandler = handler;
+  return () => { if (unauthorizedHandler === handler) unauthorizedHandler = null; };
+}
 
 async function requestJson(path, options = {}) {
   const token = await AsyncStorage.getItem(TOKEN_KEY);
@@ -16,7 +22,16 @@ async function requestJson(path, options = {}) {
   const raw = await response.text();
   let body = null;
   try { body = raw ? JSON.parse(raw) : null; } catch {}
-  if (!response.ok) throw new Error(body?.message || `Erro ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(body?.message || `Erro ${response.status}`);
+    error.status = response.status;
+    error.code = body?.code;
+    if (response.status === 401) {
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      try { unauthorizedHandler?.(); } catch {}
+    }
+    throw error;
+  }
   return body;
 }
 
