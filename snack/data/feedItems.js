@@ -2,6 +2,13 @@ export const feedItems = [
   {
     id: '1',
     author: 'João Silva',
+    type: 'presentation',
+    presentationId: 'talk-mobile-community',
+    title: 'Talk: Comunidade Mobile em Escala',
+    speakers: [
+      { id: 'speaker-ana-lima', name: 'Ana Lima', avatar: '👩‍💻' },
+      { id: 'speaker-carlos-souza', name: 'Carlos Souza', avatar: '🧑‍🏫' },
+    ],
     avatar: '👤',
     content: 'Participei de um meetup sobre mobile e trouxe vários insights para a comunidade.',
     likes: 42,
@@ -11,6 +18,7 @@ export const feedItems = [
   {
     id: '2',
     author: 'Maria Santos',
+    type: 'default',
     avatar: '👩',
     content: 'Meu protótipo de app colaborativo já está no ar. Feedbacks são bem-vindos!',
     likes: 128,
@@ -20,6 +28,10 @@ export const feedItems = [
   {
     id: '3',
     author: 'Pedro Costa',
+    type: 'presentation',
+    presentationId: 'lightning-react-native',
+    title: 'Lightning Talk: React Native na Pratica',
+    speakers: [{ id: 'speaker-pedro-costa', name: 'Pedro Costa', avatar: '👨‍💻' }],
     avatar: '👨',
     content: 'Semana que vem vou apresentar um lightning talk de React Native no Meets.',
     likes: 67,

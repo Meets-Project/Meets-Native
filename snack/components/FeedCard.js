@@ -7,6 +7,9 @@ import { feedCardStyles } from '../styles/feedCardStyles';
 
 export function FeedCard({ item }) {
   const navigation = useNavigation();
+  // Apenas posts do tipo apresentação devem expor ações de avaliação.
+  const isPresentation = item.type === 'presentation';
+  const speakers = item.speakers || [];
 
   return (
     <View style={feedCardStyles.card}>
@@ -16,9 +19,56 @@ export function FeedCard({ item }) {
           <Text style={feedCardStyles.authorName}>{item.author}</Text>
           <Text style={feedCardStyles.timestamp}>{item.timestamp}</Text>
         </View>
+        {isPresentation ? (
+          <View style={feedCardStyles.presentationBadge}>
+            <Text style={feedCardStyles.presentationBadgeText}>Apresentacao</Text>
+          </View>
+        ) : null}
       </View>
 
       <Text style={feedCardStyles.cardContent}>{item.content}</Text>
+
+      {isPresentation && item.title ? <Text style={feedCardStyles.presentationTitle}>{item.title}</Text> : null}
+
+      {isPresentation && speakers.length ? (
+        <View style={feedCardStyles.speakersBlock}>
+          <Text style={feedCardStyles.speakersTitle}>Apresentadores</Text>
+          {speakers.map((speaker) => (
+            <View key={speaker.id} style={feedCardStyles.speakerRow}>
+              <View style={feedCardStyles.speakerInfo}>
+                <Text style={feedCardStyles.speakerAvatar}>{speaker.avatar || '🎤'}</Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    navigation.navigate('SpeakerProfile', {
+                      speakerId: speaker.id,
+                      speakerName: speaker.name,
+                      speakerAvatar: speaker.avatar || '🎤',
+                    })
+                  }
+                >
+                  <Text style={feedCardStyles.speakerName}>{speaker.name}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={feedCardStyles.speakerRateButton}
+                onPress={() =>
+                  // Abre a tela já focada no apresentador selecionado da lista pública do post.
+                  navigation.navigate('PresentationRating', {
+                    postId: item.id,
+                    presentationId: item.presentationId,
+                    presentationTitle: item.title || item.content,
+                    speakers,
+                    selectedSpeakerId: speaker.id,
+                  })
+                }
+              >
+                <Text style={feedCardStyles.speakerRateButtonText}>Avaliar</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       {item.image ? (
         <View style={feedCardStyles.cardImage}>
@@ -38,6 +88,22 @@ export function FeedCard({ item }) {
         <TouchableOpacity style={feedCardStyles.actionButton} onPress={() => navigation.navigate('create')}>
           <MaterialCommunityIcons name="share-outline" size={20} color={colors.textMuted} />
         </TouchableOpacity>
+        {isPresentation ? (
+          <TouchableOpacity
+            style={feedCardStyles.actionButton}
+            onPress={() =>
+              navigation.navigate('PresentationRating', {
+                postId: item.id,
+                presentationId: item.presentationId,
+                presentationTitle: item.title || item.content,
+                speakers,
+              })
+            }
+          >
+            <MaterialCommunityIcons name="star-outline" size={20} color={colors.textMuted} />
+            <Text style={feedCardStyles.actionText}>Avaliar apresentacao</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );

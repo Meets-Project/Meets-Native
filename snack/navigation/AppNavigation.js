@@ -24,6 +24,8 @@ import { SavesScreen } from '../screens/SavesScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { HelpScreen } from '../screens/HelpScreen';
 import { AboutScreen } from '../screens/AboutScreen';
+import { PresentationRatingScreen } from '../screens/PresentationRatingScreen';
+import { SpeakerProfileScreen } from '../screens/SpeakerProfileScreen';
 import { menuItems } from '../data/menuItens';
 import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
@@ -73,6 +75,8 @@ export default function AppNavigation() {
       CreateFlow: 'Criar',
       EditProfile: 'Editar perfil',
       ShareProfile: 'Compartilhar perfil',
+      PresentationRating: 'Avaliar apresentacao',
+      SpeakerProfile: 'Perfil publico',
     };
     if (detailTitles[routeName]) return detailTitles[routeName];
     const menu = menuItems.find((m) => m.id === routeName);
@@ -135,6 +139,8 @@ export default function AppNavigation() {
           <Stack.Screen name="settings" component={SettingsScreen} />
           <Stack.Screen name="help" component={HelpScreen} />
           <Stack.Screen name="about" component={AboutScreen} />
+          <Stack.Screen name="PresentationRating" component={PresentationRatingScreen} />
+          <Stack.Screen name="SpeakerProfile" component={SpeakerProfileScreen} />
 
         </Stack.Navigator>
 
