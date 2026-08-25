@@ -1,0 +1,10 @@
+backend/
+Dockerfile
+docker-compose.yml
+web-server.js
+bun.lock
+package-lock.json
+.DS_Store
+.git
+.gitignore
+node_modules/

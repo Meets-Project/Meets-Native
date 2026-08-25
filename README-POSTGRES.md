@@ -9,7 +9,7 @@ This version removes the Firebase/Firestore dependency from the application flow
 - PostgreSQL 17 runs in Docker.
 - JWT authentication is persisted in AsyncStorage on the mobile app.
 - Passwords are hashed with bcrypt.
-- Database schema is in `backend/migrations/001_init.sql`.
+- Database schema is in `backend/migrations/001_init.sql` and incremental changes in `002_image_storage.sql` / `003_ratings_events_history.sql`.
 - Automated persistence tests use `pg-mem` to exercise the repository layer without requiring Docker.
 
 ## Start PostgreSQL + API
@@ -20,8 +20,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
-API: `http://localhost:3333`
-Health: `http://localhost:3333/health`
+API: `http://localhost:3334`
+Health: `http://localhost:3334/health`
+Adminer: `http://localhost:8081` (server `postgres`, database `meets`, user `postgres`, password `postgres`)
 
 ## Start mobile
 
@@ -55,7 +56,13 @@ The tests cover:
 - save/favorite persistence;
 - history persistence;
 - event/live/post creation;
-- settings persistence.
+- settings persistence;
+- presentation ratings with 1–5 stars;
+- public speaker averages and six skill averages;
+- controlled one-rating-per-user/per-presentation/per-speaker updates;
+- auditable history for content, likes, saves, favorites and ratings;
+- event date, time and location;
+- ownership checks for deleting your own posts/events.
 
 ## What was changed
 

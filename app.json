@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Meets Mobile",
+    "slug": "meets-mobile-snack",
+    "version": "1.0.0",
+    "description": "Meets Mobile App",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android", "web"],
+    "scheme": "meets-mobile"
+  }
+}
