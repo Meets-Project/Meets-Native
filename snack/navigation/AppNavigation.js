@@ -98,7 +98,9 @@ export default function AppNavigation() {
       const rootState = state || navigationRef.getRootState();
       const activeName = getActiveRouteName(rootState);
       if (activeName) setCurrentRouteName(activeName);
-    } catch (e) {}
+    } catch (e) {
+      setCurrentRouteName('Loading');
+    }
   };
 
   const authRoutes = new Set(['Loading', 'Login', 'Signup']);

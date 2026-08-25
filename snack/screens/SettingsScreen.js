@@ -4,7 +4,7 @@ import { screenStyles } from '../styles/screenStyles';
 
 export function SettingsScreen() {
   return (
-    <View style={[screenStyles.listContent]}> 
+    <View style={screenStyles.listContent}>
       <View style={screenStyles.sectionCard}>
         <Text style={screenStyles.sectionTitle}>Configurações</Text>
         <Text style={screenStyles.sectionText}>Aqui você encontrará opções do aplicativo.</Text>
