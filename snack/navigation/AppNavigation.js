@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { MenuDrawer } from '../components/MenuDrawer';
@@ -31,7 +31,7 @@ import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
 import { appStyles } from '../styles/appStyles';
 
-const Stack = createNativeStackNavigator();
+const Stack = createStackNavigator();
 const Tabs = createBottomTabNavigator();
 
 function MainTabs() {
