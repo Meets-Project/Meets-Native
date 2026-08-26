@@ -12,6 +12,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { screenStyles } from '../styles/screenStyles';
 import { colors } from '../styles/colors';
 import { fetchCurrentUser } from '../services/userApi';
+import { getMyEvents, getMyPosts } from '../services/api';
 
 /**
  * Converte qualquer valor recebido da API em um número seguro.
@@ -79,6 +80,8 @@ export function ProfileScreen() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [events, setEvents] = useState([]);
+  const [posts, setPosts] = useState([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -88,7 +91,7 @@ export function ProfileScreen() {
         try {
           setErrorMessage('');
 
-          const profile = await fetchCurrentUser();
+          const [profile, myEvents, myPosts] = await Promise.all([fetchCurrentUser(), getMyEvents(), getMyPosts()]);
 
           if (!isActive) {
             return;
@@ -96,6 +99,8 @@ export function ProfileScreen() {
 
           // Garante que nunca teremos null/undefined inesperadamente.
           setUser(profile || {});
+          setEvents(Array.isArray(myEvents) ? myEvents : []);
+          setPosts(Array.isArray(myPosts) ? myPosts : []);
         } catch (error) {
           if (!isActive) {
             return;
@@ -170,6 +175,7 @@ export function ProfileScreen() {
     connections: formatCount(user?.connections),
     eventsCount: formatCount(user?.eventsCount),
     rating: toSafeNumber(user?.rating, 0),
+    ratingsCount: formatCount(user?.ratingsCount),
     bio: user?.bio || '',
   };
 
@@ -288,7 +294,7 @@ export function ProfileScreen() {
             </Text>
 
             <Text style={screenStyles.statLabel}>
-              Avaliação
+              Avaliação média
             </Text>
           </View>
         </View>
@@ -346,6 +352,44 @@ export function ProfileScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={screenStyles.sectionCard}>
+        <Text style={screenStyles.sectionTitle}>Minhas publicações</Text>
+        {posts.length ? posts.slice(0, 10).map((post) => (
+          <View key={post.id} style={screenStyles.achievementItem}>
+            <View style={screenStyles.achievementIconWrap}>
+              <MaterialCommunityIcons name={post.type === 'presentation' ? 'presentation' : 'post-outline'} size={18} color="#ffffff" />
+            </View>
+            <View style={screenStyles.achievementTextWrap}>
+              <Text style={screenStyles.rowTitle}>{post.title || 'Publicação'}</Text>
+              <Text style={screenStyles.rowSubtitle}>{post.content}</Text>
+            </View>
+          </View>
+        )) : (
+          <Text style={screenStyles.sectionText}>Você ainda não publicou nada.</Text>
+        )}
+      </View>
+
+      <View style={screenStyles.sectionCard}>
+        <Text style={screenStyles.sectionTitle}>Meus eventos</Text>
+        {events.length ? events.slice(0, 10).map((event) => (
+          <View key={event.id} style={screenStyles.achievementItem}>
+            <View style={screenStyles.achievementIconWrap}>
+              <MaterialCommunityIcons name="calendar" size={18} color="#ffffff" />
+            </View>
+            <View style={screenStyles.achievementTextWrap}>
+              <Text style={screenStyles.rowTitle}>{event.title}</Text>
+              <Text style={screenStyles.rowSubtitle}>
+                {event.event_date ? new Date(`${event.event_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Data não informada'}
+                {event.event_time ? ` às ${String(event.event_time).slice(0,5)}` : ''}
+                {event.location ? ` · ${event.location}` : ''}
+              </Text>
+            </View>
+          </View>
+        )) : (
+          <Text style={screenStyles.sectionText}>Você ainda não criou eventos.</Text>
+        )}
       </View>
 
       {/* CONQUISTAS */}

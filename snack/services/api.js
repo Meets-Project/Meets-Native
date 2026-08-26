@@ -66,3 +66,28 @@ export async function updateSettings(payload) { return (await requestJson('/sett
 export async function toggleLike(id) { return (await requestJson(`/posts/${id}/like`,{method:'POST'})).data; }
 export async function toggleSave(id) { return (await requestJson(`/posts/${id}/save`,{method:'POST'})).data; }
 export async function createPost(content,image) { return (await requestJson('/posts',{method:'POST',body:JSON.stringify({content,image})})).data; }
+
+export async function createPresentationRating(payload) {
+  return (await requestJson('/ratings/presentations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })).data;
+}
+
+export async function getSpeakerRatingSummary(speakerId) {
+  return (await requestJson(`/ratings/speakers/${encodeURIComponent(speakerId)}`)).data;
+}
+
+export async function getMyEvents() {
+  return (await requestJson('/events/mine')).data;
+}
+
+export async function deletePost(id) {
+  return (await requestJson(`/posts/${encodeURIComponent(id)}`, { method: 'DELETE' })).data;
+}
+
+export async function deleteEvent(id) {
+  return (await requestJson(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' })).data;
+}
+
+export async function getMyPosts() { return (await requestJson('/posts/mine')).data; }

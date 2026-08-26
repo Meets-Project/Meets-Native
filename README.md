@@ -1,19 +1,65 @@
-# Snack
+# Meets — Native & Web
 
-Arquivo separado para uso rapido no Expo Snack.
+Plataforma de eventos, encontros, salas ao vivo e avaliação de apresentações em comunidade.
 
-## Como usar
+---
 
-1. Abra https://snack.expo.dev/
-2. Crie um novo projeto.
-3. Copie o conteudo de `snack/App.js` e cole no arquivo `App.js` do Snack.
+## 📁 Estrutura do Projeto
 
-## Observacao
+```
+Meets-Native/
+├── backend/                  # API Node.js / Express com PostgreSQL
+│   ├── migrations/           # Migrações SQL (001, 002, 003)
+│   ├── src/                  # Código-fonte da API (app, repo, auth, db)
+│   └── test/                 # Testes automatizados (Vitest + pg-mem)
+├── snack/                    # App Mobile / Web (React Native + Expo)
+│   ├── components/           # Componentes visuais
+│   ├── data/                 # Dados e configurações
+│   ├── navigation/           # Navegação do App (React Navigation)
+│   ├── screens/              # Telas (Home, Perfil, Avaliações, etc.)
+│   ├── services/             # Integração com a API REST
+│   └── styles/               # Estilizações globais e componentes
+├── docker-compose.yml        # Orquestração do PostgreSQL, Backend, Adminer e Frontend
+├── MERGE_IMPLEMENTADO.md     # Detalhes das funcionalidades integradas
+└── README-POSTGRES.md        # Documentação do backend e banco de dados
+```
 
-Este arquivo usa apenas componentes padrao do React Native + `expo-status-bar`, para funcionar no Snack sem configuracao extra.
+---
 
-## Editor próprio de imagens
+## 🚀 Como Iniciar
 
-O projeto inclui um editor próprio com OpenCV.js. Execute `npm install` ou `scripts/download-opencv.ps1` para baixar a biblioteca localmente. Depois, em Criar > post/evento > Escolher imagem, abra `Editar imagem`.
+### Com Docker Compose (Recomendado)
 
-Veja `README-OPENCV-EDITOR.md` para os recursos implementados.
+```bash
+docker compose up --build
+```
+
+- **Frontend (Web):** `http://localhost:8080`
+- **Backend API:** `http://localhost:3334`
+- **Adminer (Banco):** `http://localhost:8081` (servidor: `postgres`, banco: `meets`, usuário: `postgres`, senha: `postgres`)
+
+---
+
+## 📱 Executando o App Mobile / Frontend (Expo)
+
+```bash
+cd snack
+npm install
+npx expo start
+```
+
+---
+
+## ⚙️ Executando o Backend localmente
+
+```bash
+cd backend
+npm install
+npm run migrate
+npm run dev
+```
+
+Para rodar os testes automatizados do backend:
+```bash
+npm test
+```

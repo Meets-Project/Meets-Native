@@ -14,6 +14,8 @@ import { CreateFlowScreen } from '../screens/CreateFlowScreen';
 import { ImageEditorScreen } from '../screens/ImageEditorScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ShareProfileScreen } from '../screens/ShareProfileScreen';
+import { PresentationRatingScreen } from '../screens/PresentationRatingScreen';
+import { SpeakerProfileScreen } from '../screens/SpeakerProfileScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { CreateScreen } from '../screens/CreateScreen';
@@ -85,6 +87,8 @@ export default function AppNavigation() {
       ImageEditor: 'Editor de imagem',
       EditProfile: 'Editar perfil',
       ShareProfile: 'Compartilhar perfil',
+      PresentationRating: 'Avaliar apresentação',
+      SpeakerProfile: 'Perfil público',
     };
     if (detailTitles[routeName]) return detailTitles[routeName];
     const menu = menuItems.find((m) => m.id === routeName);
@@ -141,6 +145,8 @@ export default function AppNavigation() {
           <Stack.Screen name="ImageEditor" component={ImageEditorScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="ShareProfile" component={ShareProfileScreen} />
+          <Stack.Screen name="PresentationRating" component={PresentationRatingScreen} />
+          <Stack.Screen name="SpeakerProfile" component={SpeakerProfileScreen} />
 
           <Stack.Screen name="favorites" component={FavoritesScreen} />
           <Stack.Screen name="history" component={HistoryScreen} />

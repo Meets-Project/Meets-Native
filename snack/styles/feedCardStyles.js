@@ -70,4 +70,56 @@ export const feedCardStyles = StyleSheet.create({
     color: colors.textMuted,
     marginLeft: 6,
   },
+
+  presentationBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  presentationBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  eventMeta: { marginBottom: 10, gap: 4 },
+  eventMetaText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  presentationTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  speakersBlock: {
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: colors.background,
+    marginBottom: 12,
+  },
+  speakersTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  speakerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
+  },
+  speakerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  speakerAvatar: { fontSize: 22, marginRight: 8 },
+  speakerName: { fontSize: 13, fontWeight: '700', color: colors.text },
+  speakerRateButton: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.primary,
+  },
+  speakerRateButtonText: { color: '#fff', fontSize: 12, fontWeight: '800' },
 });
