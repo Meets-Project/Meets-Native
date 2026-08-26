@@ -10,7 +10,7 @@ export async function savePresentationRating(payload) {
     postId: payload.postId || undefined,
     presentationId: payload.presentationId || undefined,
     stars: payload.stars,
-    speakerId: payload.speakerId,
+    speakerId: payload.speakerId || undefined,
     includeSpeakerSkills: Boolean(payload.includeSpeakerSkills),
     skills: payload.includeSpeakerSkills ? payload.skills : undefined,
     comment: payload.comment || '',

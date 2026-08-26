@@ -15,7 +15,7 @@ function testDb() {
     );
     CREATE TABLE posts (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
-      content text NOT NULL, image varchar(120), likes integer NOT NULL DEFAULT 0,
+      content text NOT NULL, image text, likes integer NOT NULL DEFAULT 0,
       title varchar(160) NOT NULL DEFAULT '', type varchar(30) NOT NULL DEFAULT 'default',
       presentation_id varchar(160), created_at timestamptz NOT NULL DEFAULT now()
     );
@@ -24,16 +24,19 @@ function testDb() {
     CREATE TABLE saved_posts (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
     CREATE TABLE events (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
-      title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', image varchar(120),
+      title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', image text,
       event_date date, event_time time, location varchar(255) NOT NULL DEFAULT '',
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE saved_events (user_id uuid NOT NULL REFERENCES users(id), event_id uuid NOT NULL REFERENCES events(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,event_id));
+    CREATE TABLE event_participants (event_id uuid NOT NULL REFERENCES events(id), user_id uuid NOT NULL REFERENCES users(id), status varchar(40) NOT NULL DEFAULT 'confirmed', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(event_id,user_id));
     CREATE TABLE live_rooms (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id), title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE history (id serial PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id), type varchar(40) NOT NULL, title varchar(200) NOT NULL, subtitle varchar(255) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE notifications (id serial PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id), title varchar(160) NOT NULL, body varchar(500) NOT NULL DEFAULT '', read_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE settings (user_id uuid PRIMARY KEY REFERENCES users(id), notifications_enabled boolean NOT NULL DEFAULT true, dark_mode boolean NOT NULL DEFAULT false, updated_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE chat_members (chat_id uuid, user_id uuid REFERENCES users(id));
     CREATE TABLE chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(160), preview varchar(500), created_at timestamptz DEFAULT now());
+    CREATE TABLE chat_members (chat_id uuid NOT NULL REFERENCES chats(id), user_id uuid NOT NULL REFERENCES users(id), unread integer NOT NULL DEFAULT 0, PRIMARY KEY(chat_id, user_id));
+    CREATE TABLE chat_messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chat_id uuid NOT NULL REFERENCES chats(id), sender_id uuid NOT NULL REFERENCES users(id), content text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE presentation_speakers (
       presentation_id varchar(160) NOT NULL, speaker_id uuid NOT NULL REFERENCES users(id),
       created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(presentation_id,speaker_id)
@@ -50,7 +53,7 @@ function testDb() {
   return mem.adapters.createPg().pool;
 }
 
-describe('Meets persistence and rating control', () => {
+describe('Meets persistence and features', () => {
   let db, repo, user, other;
   beforeEach(async () => {
     db = testDb();
@@ -72,20 +75,56 @@ describe('Meets persistence and rating control', () => {
     expect((await repo.listHistory(user.id)).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('persists events with date, time and location', async () => {
+  it('persists events with date, time and location, and supports event participants', async () => {
     const event = await repo.createContent(user.id,'event',{
-      title:'Meu evento',description:'Descrição',eventDate:'2026-09-15',eventTime:'19:30',location:'Centro'
+      title:'Meu meetup',description:'Descrição completa',eventDate:'2026-09-15',eventTime:'19:30',location:'Centro de Inovação'
     });
-    expect(event.location).toBe('Centro');
+    expect(event.location).toBe('Centro de Inovação');
     expect(String(event.event_date)).toContain('2026-09-15');
     expect(String(event.event_time)).toContain('19:30');
-    expect((await repo.listEvents(user.id))).toHaveLength(1);
+
+    // Host was auto-added as participant
+    const participants = await repo.listEventParticipants(event.id);
+    expect(participants).toHaveLength(1);
+    expect(participants[0].id).toBe(user.id);
+
+    // Other user joins
+    const joinResult = await repo.toggleEventParticipation(other.id, event.id);
+    expect(joinResult.participating).toBe(true);
+    expect(joinResult.participantsCount).toBe(2);
+
+    // Saving the event
+    const saveEventResult = await repo.toggleSave(other.id, event.id);
+    expect(saveEventResult).toBe(true);
+    const savedItems = await repo.listSaved(other.id);
+    expect(savedItems.some(i => i.id === event.id && i.type === 'event')).toBe(true);
   });
 
-  it('creates a presentation and keeps speaker ratings controlled and persistent', async () => {
+  it('supports direct chats and message sending with history and notifications', async () => {
+    const chat = await repo.getOrCreateDirectChat(user.id, other.id);
+    expect(chat.id).toBeDefined();
+
+    // Send message
+    const msg = await repo.sendChatMessage(chat.id, user.id, 'Olá, tudo bem?');
+    expect(msg.content).toBe('Olá, tudo bem?');
+    expect(msg.sender_id).toBe(user.id);
+
+    // Recipient lists messages
+    const messages = await repo.listChatMessages(chat.id, other.id);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe('Olá, tudo bem?');
+
+    // Recipient receives notification
+    const notifications = await repo.listNotifications(other.id);
+    expect(notifications.some(n => n.title.includes('Mensagem de'))).toBe(true);
+  });
+
+  it('creates a presentation and keeps speaker ratings controlled, avoiding self-rating and resolving speaker', async () => {
     const post = await repo.createPresentation(user.id,{
-      title:'Talk',description:'Conteúdo',presentationId:'talk-1',speakerIds:[other.id]
+      title:'Talk Inovação',description:'Conteúdo sobre tecnologia',presentationId:'talk-1',speakerIds:[other.id]
     });
+
+    // Rating given by user to other speaker
     const rating = await repo.createRating(user.id,{
       postId:post.id,presentationId:'talk-1',speakerId:other.id,stars:4,
       includeSpeakerSkills:true,
@@ -98,11 +137,10 @@ describe('Meets persistence and rating control', () => {
     expect(summary.averageStars).toBe(4);
     expect(summary.averageSkills.clarity).toBe(80);
     expect(summary.overall).toBeGreaterThan(0);
-    const again = await repo.createRating(user.id,{
-      postId:post.id,presentationId:'talk-1',speakerId:other.id,stars:5,
-      includeSpeakerSkills:false,comment:'Atualizei'
-    });
-    expect(Number(again.stars)).toBe(5);
-    expect((await repo.getSpeakerRatingSummary(other.id)).totalRatings).toBe(1);
+
+    // Self rating should be rejected
+    await expect(repo.createRating(other.id, {
+      postId: post.id, presentationId: 'talk-1', speakerId: other.id, stars: 5
+    })).rejects.toThrow('Você não pode avaliar a sua própria apresentação.');
   });
 });

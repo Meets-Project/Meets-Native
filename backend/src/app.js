@@ -27,6 +27,34 @@ const profileSchema = z.object({
   bio: z.string().max(1000).optional(),
 }).strict();
 
+// Helper to normalize date to YYYY-MM-DD
+function normalizeDate(input) {
+  if (!input) return undefined;
+  const str = String(input).trim();
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // DD/MM/YYYY or DD-MM-YYYY
+  const match = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (match) {
+    const day = match[1].padStart(2, '0');
+    const month = match[2].padStart(2, '0');
+    const year = match[3];
+    return `${year}-${month}-${day}`;
+  }
+  return undefined;
+}
+
+function normalizeTime(input) {
+  if (!input) return undefined;
+  const str = String(input).trim();
+  if (/^\d{2}:\d{2}(:\d{2})?$/.test(str)) return str.slice(0, 5);
+  const match = str.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (match) {
+    return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
+  }
+  return undefined;
+}
+
 app.get('/health', async (_req, res) => {
   try { await query('SELECT 1'); res.json({ ok: true, database: 'postgresql' }); }
   catch { res.status(503).json({ ok: false, database: 'postgresql' }); }
@@ -81,12 +109,50 @@ app.get('/search', requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// --- CHAT ROUTES ---
 app.get('/chats', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listChats(req.auth.sub) }); } catch (e) { next(e); }
 });
 
-app.get('/feed', requireAuth, async (_req, res, next) => {
-  try { res.json({ data: await repo.listFeed() }); } catch (e) { next(e); }
+app.post('/chats', requireAuth, async (req, res, next) => {
+  try {
+    const data = z.object({
+      recipientId: z.string().uuid(),
+    }).parse(req.body);
+
+    const chat = await repo.getOrCreateDirectChat(req.auth.sub, data.recipientId);
+    res.status(201).json({ data: chat });
+  } catch (e) { next(e); }
+});
+
+app.get('/chats/:id/messages', requireAuth, async (req, res, next) => {
+  try {
+    const messages = await repo.listChatMessages(req.params.id, req.auth.sub);
+    res.json({ data: messages });
+  } catch (e) { next(e); }
+});
+
+app.post('/chats/:id/messages', requireAuth, async (req, res, next) => {
+  try {
+    const data = z.object({
+      content: z.string().trim().min(1).max(5000),
+    }).parse(req.body);
+
+    const message = await repo.sendChatMessage(req.params.id, req.auth.sub, data.content);
+    res.status(201).json({ data: message });
+  } catch (e) { next(e); }
+});
+
+app.post('/chats/:id/read', requireAuth, async (req, res, next) => {
+  try {
+    await repo.markChatRead(req.params.id, req.auth.sub);
+    res.json({ data: { read: true } });
+  } catch (e) { next(e); }
+});
+
+// --- FEED & CONTENT ---
+app.get('/feed', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await repo.listFeed(req.auth.sub) }); } catch (e) { next(e); }
 });
 
 app.post('/posts', requireAuth, async (req, res, next) => {
@@ -125,12 +191,25 @@ app.post('/posts', requireAuth, async (req, res, next) => {
 app.post('/posts/:id/like', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.toggleLike(req.auth.sub, req.params.id) }); } catch (e) { next(e); }
 });
+
 app.post('/posts/:id/save', requireAuth, async (req, res, next) => {
-  try { res.json({ data: { saved: await repo.toggleSave(req.auth.sub, req.params.id) } }); } catch (e) { next(e); }
+  try {
+    const saved = await repo.toggleSave(req.auth.sub, req.params.id);
+    res.json({ data: { saved } });
+  } catch (e) { next(e); }
 });
+
+app.post('/events/:id/save', requireAuth, async (req, res, next) => {
+  try {
+    const saved = await repo.toggleSaveEvent(req.auth.sub, req.params.id);
+    res.json({ data: { saved } });
+  } catch (e) { next(e); }
+});
+
 app.post('/posts/:id/favorite', requireAuth, async (req, res, next) => {
   try { res.json({ data: { favorite: await repo.toggleFavorite(req.auth.sub, req.params.id) } }); } catch (e) { next(e); }
 });
+
 app.delete('/posts/:id', requireAuth, async (req, res, next) => {
   try {
     const deleted = await repo.deleteOwnPost(req.auth.sub, req.params.id);
@@ -143,32 +222,40 @@ app.delete('/posts/:id', requireAuth, async (req, res, next) => {
 app.get('/favorites', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listFavorites(req.auth.sub) }); } catch (e) { next(e); }
 });
+
 app.get('/saves', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listSaved(req.auth.sub) }); } catch (e) { next(e); }
 });
+
 app.get('/history', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listHistory(req.auth.sub) }); } catch (e) { next(e); }
 });
 
 app.post('/content', requireAuth, async (req, res, next) => {
   try {
-    const data = z.object({
+    const raw = z.object({
       mode: z.enum(['event', 'live', 'post', 'presentation']),
       title: z.string().trim().min(1).max(160),
       description: z.string().max(5000).optional(),
       image: z.string().max(15000000).optional(),
-      eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-      eventTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+      eventDate: z.string().optional(),
+      eventTime: z.string().optional(),
       location: z.string().max(255).optional(),
       presentationId: z.string().trim().max(160).optional(),
       speakerIds: z.array(z.string().uuid()).max(20).optional(),
     }).parse(req.body);
 
-    const item = await repo.createContent(req.auth.sub, data.mode, data);
+    const payload = {
+      ...raw,
+      eventDate: normalizeDate(raw.eventDate),
+      eventTime: normalizeTime(raw.eventTime),
+    };
+
+    const item = await repo.createContent(req.auth.sub, payload.mode, payload);
     await repo.addHistory(req.auth.sub, {
-      type: data.mode,
-      title: data.mode === 'event' ? 'Criou um evento' : data.mode === 'live' ? 'Abriu uma sala ao vivo' : 'Criou conteúdo',
-      subtitle: data.title,
+      type: payload.mode,
+      title: payload.mode === 'event' ? 'Criou um evento' : payload.mode === 'live' ? 'Abriu uma sala ao vivo' : 'Criou conteúdo',
+      subtitle: payload.title,
     });
     res.status(201).json({ data: item });
   } catch (e) { next(e); }
@@ -178,9 +265,25 @@ app.get('/posts/mine', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listUserPosts(req.auth.sub) }); } catch (e) { next(e); }
 });
 
+// --- EVENT PARTICIPATION & MANAGEMENT ---
 app.get('/events/mine', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listEvents(req.auth.sub) }); } catch (e) { next(e); }
 });
+
+app.post('/events/:id/participate', requireAuth, async (req, res, next) => {
+  try {
+    const result = await repo.toggleEventParticipation(req.auth.sub, req.params.id);
+    res.json({ data: result });
+  } catch (e) { next(e); }
+});
+
+app.get('/events/:id/participants', requireAuth, async (req, res, next) => {
+  try {
+    const participants = await repo.listEventParticipants(req.params.id);
+    res.json({ data: participants });
+  } catch (e) { next(e); }
+});
+
 app.delete('/events/:id', requireAuth, async (req, res, next) => {
   try {
     const deleted = await repo.deleteOwnEvent(req.auth.sub, req.params.id);
@@ -190,13 +293,14 @@ app.delete('/events/:id', requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// --- RATINGS ---
 app.post('/ratings/presentations', requireAuth, async (req, res, next) => {
   try {
     const data = z.object({
-      postId: z.string().uuid().optional(),
-      presentationId: z.string().trim().min(1).max(160).optional(),
+      postId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
+      presentationId: z.string().trim().min(1).max(160).optional().or(z.literal('')).transform(v => v || undefined),
       stars: z.coerce.number().min(1).max(5),
-      speakerId: z.string().uuid(),
+      speakerId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
       includeSpeakerSkills: z.boolean().optional(),
       skills: z.object({
         clarity: z.coerce.number().min(0).max(99).optional(),
@@ -221,6 +325,7 @@ app.get('/ratings/speakers/:speakerId', requireAuth, async (req, res, next) => {
 app.get('/settings', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listSettings(req.auth.sub) }); } catch (e) { next(e); }
 });
+
 app.put('/settings', requireAuth, async (req, res, next) => {
   try {
     const d = z.object({
@@ -236,10 +341,11 @@ app.use((err, _req, res, _next) => {
   if (err.code === 'SELF_RATING') return res.status(400).json({ message: err.message });
   if (err.code === 'SPEAKER_NOT_LINKED') return res.status(400).json({ message: err.message });
   if (err.code === 'PRESENTATION_REQUIRED') return res.status(400).json({ message: err.message });
+  if (err.code === 'FORBIDDEN') return res.status(403).json({ message: err.message });
   if (err.code === '23505') return res.status(409).json({ message: 'Registro duplicado.' });
   if (err.code === '23503') return res.status(404).json({ message: err.message || 'Registro relacionado não encontrado.' });
   console.error(err);
-  res.status(500).json({ message: 'Erro interno do servidor.' });
+  res.status(500).json({ message: err.message || 'Erro interno do servidor.' });
 });
 
 export { app };
