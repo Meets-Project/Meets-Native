@@ -10,16 +10,21 @@ import { createContent, clearToken } from '../services/api';
 const copy={event:{icon:'calendar-plus',title:'Criar evento',text:'Defina data, horário, local, descrição e imagem do meetup.',cta:'Salvar evento'},live:{icon:'video-plus',title:'Abrir sala ao vivo',text:'Inicie uma sala em vídeo para conversar com sua comunidade.',cta:'Abrir sala'},post:{icon:'post-outline',title:'Publicar atualização',text:'Compartilhe uma atualização com texto e imagem com sua rede.',cta:'Publicar'},presentation:{icon:'presentation',title:'Criar apresentação',text:'Publique uma apresentação e permita que a comunidade avalie.',cta:'Publicar apresentação'}};
 
 export function CreateFlowScreen(){
- const navigation=useNavigation();const route=useRoute();const mode=route.params?.mode||'event';const content=copy[mode]||copy.event;
+ const navigation=useNavigation();const route=useRoute();
+ const [mode,setMode]=useState(route.params?.mode||'event');
+ const content=copy[mode]||copy.event;
  const [title,setTitle]=useState('');const [description,setDescription]=useState('');const [eventDate,setEventDate]=useState('');const [eventTime,setEventTime]=useState('');const [location,setLocation]=useState('');const [image,setImage]=useState(route.params?.editedImage||'');const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');
+
+ useEffect(()=>{if(route.params?.mode){setMode(route.params.mode);}},[route.params?.mode]);
  useEffect(()=>{if(route.params?.editedImage){setImage(route.params.editedImage);setMessage('Imagem editada aplicada.');}},[route.params?.editedImage]);
+
  async function chooseImage(){
    const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:false,quality:1});
    if(result.canceled) return;
    const uri=result.assets?.[0]?.uri; if(!uri) return;
-   navigation.navigate('ImageEditor',{uri,returnTo:'CreateFlow'});
+   navigation.navigate('ImageEditor',{uri,returnTo:'CreateFlow',mode});
  }
- function editImage(){if(image) navigation.navigate('ImageEditor',{uri:image,returnTo:'CreateFlow'});}
+ function editImage(){if(image) navigation.navigate('ImageEditor',{uri:image,returnTo:'CreateFlow',mode});}
  async function save(){if(!title.trim())return setMessage('Título é obrigatório.');if(mode==='event' && (!eventDate || !eventTime || !location.trim()))return setMessage('Evento exige data, horário e local.');setBusy(true);setMessage('');try{await createContent({mode,title:title.trim(),description,image:image||undefined,eventDate:eventDate||undefined,eventTime:eventTime||undefined,location:location.trim()||undefined});navigation.goBack();}catch(e){if(e?.status===401){await clearToken();setMessage('Sua sessão expirou. Faça login novamente.');setTimeout(()=>navigation.replace('Login'),500);}else setMessage(e.message||'Não foi possível salvar.');}finally{setBusy(false);}}
  return <ScrollView contentContainerStyle={authStyles.scrollContent} keyboardShouldPersistTaps="handled"><View style={authStyles.hero}><View style={authStyles.logoMark}><MaterialCommunityIcons name={content.icon} size={42} color="#fff"/></View><Text style={authStyles.heroTitle}>{content.title}</Text><Text style={authStyles.heroText}>{content.text}</Text></View><View style={authStyles.card}>
  <View style={authStyles.field}><Text style={authStyles.fieldLabel}>Título</Text><TextInput style={authStyles.fieldInput} value={title} onChangeText={setTitle} placeholder="Digite o título" placeholderTextColor="#9a9a9a"/></View>
