@@ -109,6 +109,28 @@ app.get('/search', requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// --- CONNECTION ROUTES ---
+app.post('/users/:id/connect', requireAuth, async (req, res, next) => {
+  try {
+    const result = await repo.toggleConnection(req.auth.sub, req.params.id);
+    res.json({ data: result });
+  } catch (e) { next(e); }
+});
+
+app.get('/users/:id/connection-status', requireAuth, async (req, res, next) => {
+  try {
+    const connected = await repo.getConnectionStatus(req.auth.sub, req.params.id);
+    res.json({ data: { connected } });
+  } catch (e) { next(e); }
+});
+
+app.get('/users/connections', requireAuth, async (req, res, next) => {
+  try {
+    const connections = await repo.listConnections(req.auth.sub);
+    res.json({ data: connections });
+  } catch (e) { next(e); }
+});
+
 // --- CHAT ROUTES ---
 app.get('/chats', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listChats(req.auth.sub) }); } catch (e) { next(e); }
@@ -152,7 +174,10 @@ app.post('/chats/:id/read', requireAuth, async (req, res, next) => {
 
 // --- FEED & CONTENT ---
 app.get('/feed', requireAuth, async (req, res, next) => {
-  try { res.json({ data: await repo.listFeed(req.auth.sub) }); } catch (e) { next(e); }
+  try {
+    const filter = String(req.query.filter || 'all');
+    res.json({ data: await repo.listFeed(req.auth.sub, filter) });
+  } catch (e) { next(e); }
 });
 
 app.post('/posts', requireAuth, async (req, res, next) => {
@@ -294,6 +319,12 @@ app.delete('/events/:id', requireAuth, async (req, res, next) => {
 });
 
 // --- RATINGS ---
+app.get('/ratings/available', requireAuth, async (req, res, next) => {
+  try {
+    res.json({ data: await repo.listAvailablePresentations(req.auth.sub) });
+  } catch (e) { next(e); }
+});
+
 app.post('/ratings/presentations', requireAuth, async (req, res, next) => {
   try {
     const data = z.object({

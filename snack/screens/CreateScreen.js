@@ -14,6 +14,7 @@ export function CreateScreen() {
     2: { screen: 'CreateFlow', params: { mode: 'live', title: 'Abrir Sala Ao Vivo' } },
     3: { screen: 'CreateFlow', params: { mode: 'post', title: 'Publicar Atualização' } },
     4: { screen: 'CreateFlow', params: { mode: 'presentation', title: 'Criar Apresentação' } },
+    5: { screen: 'PresentationRating', params: {} },
   };
 
   return (

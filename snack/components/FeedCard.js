@@ -4,13 +4,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../styles/colors';
 import { feedCardStyles } from '../styles/feedCardStyles';
-import { getEventParticipants, participateEvent, toggleLike, toggleSave } from '../services/api';
+import { getEventParticipants, participateEvent, toggleConnection, toggleLike, toggleSave } from '../services/api';
 
-export function FeedCard({ item }) {
+export function FeedCard({ item, onRefresh }) {
   const navigation = useNavigation();
   const [likes, setLikes] = useState(Number(item.likes || 0));
   const [isLiked, setIsLiked] = useState(Boolean(item.is_liked));
   const [saved, setSaved] = useState(Boolean(item.is_saved));
+  const [isConnected, setIsConnected] = useState(Boolean(item.is_connected));
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isParticipating, setIsParticipating] = useState(Boolean(item.is_participating));
   const [participantsCount, setParticipantsCount] = useState(Number(item.participants_count || 0));
   const [showParticipants, setShowParticipants] = useState(false);
@@ -43,11 +45,26 @@ export function FeedCard({ item }) {
     }
   }
 
+  async function handleToggleConnect() {
+    if (!authorId || isConnecting) return;
+    setIsConnecting(true);
+    try {
+      const res = await toggleConnection(authorId);
+      setIsConnected(Boolean(res.connected));
+      onRefresh?.();
+    } catch (e) {
+      console.error('Erro ao alternar conexão:', e);
+    } finally {
+      setIsConnecting(false);
+    }
+  }
+
   async function handleToggleParticipate() {
     try {
       const res = await participateEvent(item.id);
       setIsParticipating(Boolean(res.participating));
       setParticipantsCount(Number(res.participantsCount || 0));
+      onRefresh?.();
     } catch (e) {
       console.error('Erro ao participar do evento:', e);
     }
@@ -70,6 +87,16 @@ export function FeedCard({ item }) {
     }
   }
 
+  function handleOpenAuthorProfile() {
+    if (authorId) {
+      navigation.navigate('SpeakerProfile', {
+        speakerId: authorId,
+        speakerName: authorName,
+        speakerAvatar: authorAvatar,
+      });
+    }
+  }
+
   function handleOpenChatWithAuthor() {
     if (authorId) {
       navigation.navigate('MainTabs', {
@@ -89,18 +116,59 @@ export function FeedCard({ item }) {
     <View style={feedCardStyles.card}>
       {/* Card Header */}
       <View style={feedCardStyles.cardHeader}>
-        <Text style={feedCardStyles.avatarEmoji}>{authorAvatar}</Text>
-        <View style={feedCardStyles.authorInfo}>
-          <Text style={feedCardStyles.authorName}>{authorName}</Text>
-          <Text style={feedCardStyles.timestamp}>{item.timestamp || ''}</Text>
-        </View>
-        {isPresentation || isEvent ? (
-          <View style={feedCardStyles.presentationBadge}>
-            <Text style={feedCardStyles.presentationBadgeText}>
-              {isEvent ? '📅 Evento / Reunião' : '🎤 Apresentação'}
-            </Text>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
+          onPress={handleOpenAuthorProfile}
+        >
+          <Text style={feedCardStyles.avatarEmoji}>{authorAvatar}</Text>
+          <View style={feedCardStyles.authorInfo}>
+            <Text style={feedCardStyles.authorName}>{authorName}</Text>
+            <Text style={feedCardStyles.timestamp}>{item.timestamp || ''}</Text>
           </View>
-        ) : null}
+        </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {authorId ? (
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: isConnected ? colors.primarySoft : colors.background,
+                borderWidth: 1,
+                borderColor: isConnected ? colors.primary : colors.border,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 14,
+                gap: 4,
+              }}
+              onPress={handleToggleConnect}
+              disabled={isConnecting}
+            >
+              <MaterialCommunityIcons
+                name={isConnected ? 'account-check' : 'account-plus-outline'}
+                size={14}
+                color={isConnected ? colors.primary : colors.textMuted}
+              />
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: isConnected ? colors.primary : colors.textMuted,
+                }}
+              >
+                {isConnected ? 'Conectado' : 'Conectar'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {isPresentation || isEvent ? (
+            <View style={feedCardStyles.presentationBadge}>
+              <Text style={feedCardStyles.presentationBadgeText}>
+                {isEvent ? '📅 Evento' : '🎤 Apresentação'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {(isPresentation || isEvent) && item.title ? (
@@ -272,7 +340,7 @@ export function FeedCard({ item }) {
             onPress={() =>
               navigation.navigate('PresentationRating', {
                 postId: item.id,
-                presentationId: item.presentation_id,
+                presentationId: item.presentation_id || `presentation-${item.id}`,
                 presentationTitle: item.title || item.content,
                 speakers,
                 speakerId: speakers[0]?.id || authorId,

@@ -27,12 +27,26 @@ export function makeRepository(db) {
     },
 
     async getUser(id) {
-      return one(`SELECT id,name,email,role,city,avatar,bio,created_at,updated_at,
-        (SELECT count(*) FROM events e WHERE e.author_id=u.id)::int events_count,
-        (SELECT count(*) FROM chat_members cm WHERE cm.user_id=u.id)::int connections,
-        COALESCE((SELECT ROUND(AVG(pr.stars),1) FROM presentation_ratings pr WHERE pr.speaker_id=u.id),0)::numeric rating,
-        (SELECT count(*) FROM presentation_ratings pr WHERE pr.speaker_id=u.id)::int ratings_count
-        FROM users u WHERE u.id=$1`, [id]);
+      const user = await one(`SELECT id,name,email,role,city,avatar,bio,created_at,updated_at FROM users WHERE id=$1`, [id]);
+      if (!user) return null;
+      const [events, connections, ratings] = await Promise.all([
+        one(`SELECT count(*)::int total FROM events WHERE author_id=$1`, [id]),
+        one(`SELECT count(*)::int total FROM user_connections WHERE user_id=$1`, [id]),
+        many(`SELECT stars FROM presentation_ratings WHERE speaker_id=$1`, [id]),
+      ]);
+      const ratingsList = ratings || [];
+      const totalRatings = ratingsList.length;
+      const avgRating = totalRatings > 0
+        ? Number((ratingsList.reduce((acc, r) => acc + Number(r.stars || 0), 0) / totalRatings).toFixed(1))
+        : 0;
+
+      return {
+        ...user,
+        events_count: Number(events?.total || 0),
+        connections: Number(connections?.total || 0),
+        rating: avgRating,
+        ratings_count: totalRatings,
+      };
     },
 
     async updateUser(id, data) {
@@ -81,18 +95,17 @@ export function makeRepository(db) {
       if (!recipient) throw new Error('Usuário destinatário não encontrado.');
 
       // Check if a direct chat between these two users already exists
-      const existing = await one(`
-        SELECT c.id, c.name, c.preview, c.created_at
-        FROM chats c
-        JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = $1
-        JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = $2
-        WHERE (SELECT count(*) FROM chat_members WHERE chat_id = c.id) = 2
-        LIMIT 1
+      const directChats = await many(`
+        SELECT cm1.chat_id AS id, c.name, c.preview, c.created_at
+        FROM chat_members cm1
+        JOIN chat_members cm2 ON cm2.chat_id = cm1.chat_id AND cm2.user_id = $2
+        JOIN chats c ON c.id = cm1.chat_id
+        WHERE cm1.user_id = $1
       `, [userId, recipientId]);
 
-      if (existing) {
+      if (directChats && directChats.length > 0) {
         return {
-          ...existing,
+          ...directChats[0],
           name: recipient.name,
           avatar: recipient.avatar,
         };
@@ -185,44 +198,129 @@ export function makeRepository(db) {
 
     // --- FEED & POSTS ---
     async listPosts(limit = 50) {
-      return many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
-        json_build_object('id',u.id,'name',u.name,'avatar',u.avatar) author,
-        COALESCE((
-          SELECT json_agg(json_build_object('id',s.id,'name',s.name,'avatar',s.avatar)
-          ORDER BY s.name)
-          FROM presentation_speakers ps JOIN users s ON s.id=ps.speaker_id
-          WHERE ps.presentation_id=p.presentation_id
-        ), '[]'::json) speakers
+      const rows = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
+        u.id author_id, u.name author_name, u.avatar author_avatar
         FROM posts p JOIN users u ON u.id=p.author_id
         ORDER BY p.created_at DESC LIMIT $1`, [limit]);
+
+      return rows.map((p) => ({
+        id: p.id,
+        content: p.content,
+        image: p.image,
+        likes: p.likes,
+        created_at: p.created_at,
+        type: p.type,
+        title: p.title,
+        presentation_id: p.presentation_id,
+        author: { id: p.author_id, name: p.author_name, avatar: p.author_avatar },
+        speakers: [],
+      }));
     },
 
-    async listFeed(userId = null, limit = 50) {
+    async listFeed(userId = null, filter = 'all', limit = 50) {
+      let savedPostSet = new Set();
+      let likedPostSet = new Set();
+      let connectedSet = new Set();
+      let savedEventSet = new Set();
+      let partEventSet = new Set();
+
+      if (userId) {
+        const [savedPosts, likedPosts, connections, savedEvents, partEvents] = await Promise.all([
+          many(`SELECT post_id FROM saved_posts WHERE user_id=$1`, [userId]),
+          many(`SELECT post_id FROM post_likes WHERE user_id=$1`, [userId]),
+          many(`SELECT connected_user_id FROM user_connections WHERE user_id=$1`, [userId]),
+          many(`SELECT event_id FROM saved_events WHERE user_id=$1`, [userId]),
+          many(`SELECT event_id FROM event_participants WHERE user_id=$1`, [userId]),
+        ]);
+        savedPostSet = new Set((savedPosts || []).map(r => r.post_id));
+        likedPostSet = new Set((likedPosts || []).map(r => r.post_id));
+        connectedSet = new Set((connections || []).map(r => r.connected_user_id));
+        savedEventSet = new Set((savedEvents || []).map(r => r.event_id));
+        partEventSet = new Set((partEvents || []).map(r => r.event_id));
+      }
+
       const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
-        json_build_object('id',u.id,'name',u.name,'avatar',u.avatar) author,
-        COALESCE((
-          SELECT json_agg(json_build_object('id',s.id,'name',s.name,'avatar',s.avatar)
-          ORDER BY s.name)
-          FROM presentation_speakers ps JOIN users s ON s.id=ps.speaker_id
-          WHERE ps.presentation_id=p.presentation_id
-        ), '[]'::json) speakers,
-        ${userId ? `EXISTS(SELECT 1 FROM saved_posts sp WHERE sp.post_id=p.id AND sp.user_id='${userId}')` : 'false'} AS is_saved,
-        ${userId ? `EXISTS(SELECT 1 FROM post_likes pl WHERE pl.post_id=p.id AND pl.user_id='${userId}')` : 'false'} AS is_liked
+        u.id author_id, u.name author_name, u.avatar author_avatar
         FROM posts p JOIN users u ON u.id=p.author_id
         ORDER BY p.created_at DESC LIMIT $1`, [limit]);
 
-      const events = await many(`SELECT e.id,e.title,e.description AS content,e.image,e.created_at,
-          'event'::varchar AS type,''::varchar AS presentation_id,
-          json_build_object('id',u.id,'name',u.name,'avatar',u.avatar) author,
-          '[]'::json AS speakers,
-          e.event_date,e.event_time,e.location,
-          (SELECT count(*)::int FROM event_participants ep WHERE ep.event_id=e.id) AS participants_count,
-          ${userId ? `EXISTS(SELECT 1 FROM event_participants ep WHERE ep.event_id=e.id AND ep.user_id='${userId}')` : 'false'} AS is_participating,
-          ${userId ? `EXISTS(SELECT 1 FROM saved_events se WHERE se.event_id=e.id AND se.user_id='${userId}')` : 'false'} AS is_saved
-        FROM events e JOIN users u ON u.id=e.author_id
-        ORDER BY e.created_at DESC LIMIT $1`, [limit]);
+      let formattedPosts = posts.map((p) => ({
+        id: p.id,
+        content: p.content,
+        image: p.image,
+        likes: p.likes,
+        created_at: p.created_at,
+        type: p.type,
+        title: p.title,
+        presentation_id: p.presentation_id,
+        author: { id: p.author_id, name: p.author_name, avatar: p.author_avatar },
+        speakers: [],
+        is_saved: savedPostSet.has(p.id),
+        is_liked: likedPostSet.has(p.id),
+        is_connected: connectedSet.has(p.author_id),
+      }));
 
-      return [...posts, ...events].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit);
+      if (filter === 'connections' && userId) {
+        formattedPosts = formattedPosts.filter(p => connectedSet.has(p.author.id));
+      }
+
+      // Fetch speakers for any presentations in feed
+      const presIds = formattedPosts.filter((p) => p.presentation_id).map((p) => p.presentation_id);
+      if (presIds.length > 0) {
+        const speakers = await many(`SELECT ps.presentation_id, s.id, s.name, s.avatar
+          FROM presentation_speakers ps JOIN users s ON s.id=ps.speaker_id
+          WHERE ps.presentation_id = ANY($1) ORDER BY s.name`, [presIds]);
+        const speakersByPres = {};
+        speakers.forEach((s) => {
+          if (!speakersByPres[s.presentation_id]) speakersByPres[s.presentation_id] = [];
+          speakersByPres[s.presentation_id].push({ id: s.id, name: s.name, avatar: s.avatar });
+        });
+        formattedPosts.forEach((p) => {
+          if (p.presentation_id && speakersByPres[p.presentation_id]) {
+            p.speakers = speakersByPres[p.presentation_id];
+          }
+        });
+      }
+
+      const [events, partCounts] = await Promise.all([
+        many(`SELECT e.id,e.title,e.description AS content,e.image,e.created_at,
+          'event'::varchar AS type,''::varchar AS presentation_id,
+          u.id author_id, u.name author_name, u.avatar author_avatar,
+          e.event_date,e.event_time,e.location
+        FROM events e JOIN users u ON u.id=e.author_id
+        ORDER BY e.created_at DESC LIMIT $1`, [limit]),
+        many(`SELECT event_id, count(*)::int AS count FROM event_participants GROUP BY event_id`),
+      ]);
+
+      const partCountMap = {};
+      (partCounts || []).forEach((p) => {
+        partCountMap[p.event_id] = Number(p.count || 0);
+      });
+
+      let formattedEvents = events.map((e) => ({
+        id: e.id,
+        title: e.title,
+        content: e.content,
+        image: e.image,
+        created_at: e.created_at,
+        type: e.type,
+        presentation_id: e.presentation_id,
+        author: { id: e.author_id, name: e.author_name, avatar: e.author_avatar },
+        speakers: [],
+        event_date: e.event_date,
+        event_time: e.event_time,
+        location: e.location,
+        participants_count: partCountMap[e.id] || 0,
+        is_participating: partEventSet.has(e.id),
+        is_saved: savedEventSet.has(e.id),
+        is_connected: connectedSet.has(e.author_id),
+      }));
+
+      if (filter === 'connections' && userId) {
+        formattedEvents = formattedEvents.filter(e => connectedSet.has(e.author.id));
+      }
+
+      return [...formattedPosts, ...formattedEvents].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit);
     },
 
     async createPost(userId, { content, image, title = '', type = 'default', presentationId = null }) {
@@ -250,14 +348,26 @@ export function makeRepository(db) {
     },
 
     async getPostById(id) {
-      return one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
-        json_build_object('id',u.id,'name',u.name,'avatar',u.avatar) author,
-        COALESCE((
-          SELECT json_agg(json_build_object('id',s.id,'name',s.name,'avatar',s.avatar) ORDER BY s.name)
-          FROM presentation_speakers ps JOIN users s ON s.id=ps.speaker_id
-          WHERE ps.presentation_id=p.presentation_id
-        ), '[]'::json) speakers
+      const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
+        u.id author_id, u.name author_name, u.avatar author_avatar
         FROM posts p JOIN users u ON u.id=p.author_id WHERE p.id=$1`, [id]);
+      if (!p) return null;
+      let speakers = [];
+      if (p.presentation_id) {
+        speakers = await many(`SELECT s.id,s.name,s.avatar FROM presentation_speakers ps JOIN users s ON s.id=ps.speaker_id WHERE ps.presentation_id=$1 ORDER BY s.name`, [p.presentation_id]);
+      }
+      return {
+        id: p.id,
+        content: p.content,
+        image: p.image,
+        likes: p.likes,
+        created_at: p.created_at,
+        type: p.type,
+        title: p.title,
+        presentation_id: p.presentation_id,
+        author: { id: p.author_id, name: p.author_name, avatar: p.author_avatar },
+        speakers,
+      };
     },
 
     async toggleLike(userId, postId) {
@@ -475,16 +585,140 @@ export function makeRepository(db) {
         WHERE e.author_id=$1 ORDER BY COALESCE(e.event_date,e.created_at::date) DESC,e.created_at DESC`, [userId]);
     },
 
-    // --- RATINGS WITH AUTO SPEAKER RESOLUTION ---
-    async createRating(raterId, payload) {
-      const post = payload.postId ? await one(`SELECT id,author_id,type,presentation_id,title FROM posts WHERE id=$1`, [payload.postId]) : null;
-      if (payload.postId && !post) {
-        const err = new Error('Publicação da apresentação não encontrada.');
+    // --- USER CONNECTIONS (NETWORK / FOLLOW) ---
+    async toggleConnection(userId, targetUserId) {
+      if (userId === targetUserId) {
+        throw new Error('Não é possível conectar-se a si mesmo.');
+      }
+      const targetUser = await one(`SELECT id, name FROM users WHERE id=$1`, [targetUserId]);
+      if (!targetUser) {
+        const err = new Error('Usuário não encontrado.');
         err.code = '23503';
         throw err;
       }
 
-      const presentationId = payload.presentationId || post?.presentation_id;
+      const existing = await one(`SELECT 1 FROM user_connections WHERE user_id=$1 AND connected_user_id=$2`, [userId, targetUserId]);
+      if (existing) {
+        await db.query(`DELETE FROM user_connections WHERE user_id=$1 AND connected_user_id=$2`, [userId, targetUserId]);
+        await addHistory(userId, { type: 'connection_removed', title: 'Desconectou de um membro', subtitle: targetUser.name });
+        const count = await one(`SELECT count(*)::int AS total FROM user_connections WHERE user_id=$1`, [userId]);
+        return { connected: false, connectionsCount: Number(count?.total || 0) };
+      } else {
+        await db.query(`INSERT INTO user_connections(user_id, connected_user_id) VALUES($1, $2) ON CONFLICT DO NOTHING`, [userId, targetUserId]);
+        await addHistory(userId, { type: 'connection_added', title: 'Conectou-se com um membro', subtitle: targetUser.name });
+
+        const user = await one(`SELECT name FROM users WHERE id=$1`, [userId]);
+        await this.createNotification(targetUserId, {
+          title: 'Nova conexão no Meets',
+          body: `${user?.name || 'Um membro'} conectou-se com você.`,
+        });
+
+        const count = await one(`SELECT count(*)::int AS total FROM user_connections WHERE user_id=$1`, [userId]);
+        return { connected: true, connectionsCount: Number(count?.total || 0) };
+      }
+    },
+
+    async getConnectionStatus(userId, targetUserId) {
+      if (!userId || !targetUserId || userId === targetUserId) return false;
+      const existing = await one(`SELECT 1 FROM user_connections WHERE user_id=$1 AND connected_user_id=$2`, [userId, targetUserId]);
+      return Boolean(existing);
+    },
+
+    async listConnections(userId) {
+      return many(`
+        SELECT u.id, u.name, u.avatar, u.role, u.city, uc.created_at AS connected_at
+        FROM user_connections uc
+        JOIN users u ON u.id = uc.connected_user_id
+        WHERE uc.user_id = $1
+        ORDER BY uc.created_at DESC
+      `, [userId]);
+    },
+
+    // --- AVAILABLE PRESENTATIONS / EVENTS TO RATE ---
+    async listAvailablePresentations(userId) {
+      const presentations = await many(`
+        SELECT p.id AS post_id, p.presentation_id, p.title, p.content, p.created_at,
+          u.id AS author_id, u.name AS author_name, u.avatar AS author_avatar,
+          'presentation' AS type
+        FROM posts p
+        JOIN users u ON u.id=p.author_id
+        WHERE p.type='presentation' OR p.presentation_id IS NOT NULL
+        ORDER BY p.created_at DESC
+        LIMIT 50
+      `);
+
+      const formattedPresentations = presentations.map((p) => ({
+        postId: p.post_id,
+        presentationId: p.presentation_id || `presentation-${p.post_id}`,
+        title: p.title || p.content || 'Apresentação',
+        author: { id: p.author_id, name: p.author_name, avatar: p.author_avatar },
+        speakers: [{ id: p.author_id, name: p.author_name, avatar: p.author_avatar }],
+        created_at: p.created_at,
+      }));
+
+      // Fetch any multi-speakers
+      const presIds = formattedPresentations.map((p) => p.presentationId);
+      if (presIds.length > 0) {
+        const speakers = await many(`
+          SELECT ps.presentation_id, s.id, s.name, s.avatar
+          FROM presentation_speakers ps JOIN users s ON s.id=ps.speaker_id
+          WHERE ps.presentation_id = ANY($1) ORDER BY s.name
+        `, [presIds]);
+        const map = {};
+        speakers.forEach((s) => {
+          if (!map[s.presentation_id]) map[s.presentation_id] = [];
+          map[s.presentation_id].push({ id: s.id, name: s.name, avatar: s.avatar });
+        });
+        formattedPresentations.forEach((p) => {
+          if (map[p.presentationId] && map[p.presentationId].length > 0) {
+            p.speakers = map[p.presentationId];
+          }
+        });
+      }
+
+      const events = await many(`
+        SELECT e.id AS post_id, ('presentation-event-' || e.id) AS presentation_id, e.title, e.description AS content, e.created_at,
+          u.id AS author_id, u.name AS author_name, u.avatar AS author_avatar,
+          'event' AS type
+        FROM events e
+        JOIN users u ON u.id=e.author_id
+        ORDER BY e.created_at DESC
+        LIMIT 50
+      `);
+
+      const formattedEvents = events.map((e) => ({
+        postId: e.post_id,
+        presentationId: e.presentation_id,
+        title: e.title || 'Evento / Reunião',
+        author: { id: e.author_id, name: e.author_name, avatar: e.author_avatar },
+        speakers: [{ id: e.author_id, name: e.author_name, avatar: e.author_avatar }],
+        created_at: e.created_at,
+      }));
+
+      return [...formattedPresentations, ...formattedEvents].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    },
+
+    // --- RATINGS WITH AUTO SPEAKER & PRESENTATION RESOLUTION ---
+    async createRating(raterId, payload) {
+      let post = payload.postId ? await one(`SELECT id,author_id,type,presentation_id,title FROM posts WHERE id=$1`, [payload.postId]) : null;
+      let presentationId = payload.presentationId || post?.presentation_id;
+
+      // If post exists without presentation_id, auto-link it
+      if (post && !presentationId) {
+        presentationId = `presentation-${post.id}`;
+        await db.query(`UPDATE posts SET presentation_id=$1, type='presentation' WHERE id=$2`, [presentationId, post.id]);
+        await db.query(`INSERT INTO presentation_speakers(presentation_id, speaker_id) VALUES($1, $2) ON CONFLICT DO NOTHING`, [presentationId, post.author_id]);
+      }
+
+      // If presentationId was provided as an event presentation ID (e.g. presentation-event-<id>), link the event author
+      if (presentationId && presentationId.startsWith('presentation-event-')) {
+        const eventId = presentationId.replace('presentation-event-', '');
+        const ev = await one(`SELECT id, author_id FROM events WHERE id=$1`, [eventId]);
+        if (ev) {
+          await db.query(`INSERT INTO presentation_speakers(presentation_id, speaker_id) VALUES($1, $2) ON CONFLICT DO NOTHING`, [presentationId, ev.author_id]);
+        }
+      }
+
       if (!presentationId) {
         const err = new Error('Apresentação não informada.');
         err.code = 'PRESENTATION_REQUIRED';
@@ -495,7 +729,7 @@ export function makeRepository(db) {
       let targetSpeakerId = payload.speakerId;
       if (!targetSpeakerId) {
         const speakerRow = await one(`SELECT speaker_id FROM presentation_speakers WHERE presentation_id=$1 LIMIT 1`, [presentationId]);
-        targetSpeakerId = speakerRow?.speaker_id || post?.author_id;
+        targetSpeakerId = speakerRow?.speaker_id || post?.author_id || raterId;
       }
 
       if (!targetSpeakerId) {
@@ -511,12 +745,6 @@ export function makeRepository(db) {
         throw err;
       }
 
-      if (speaker.id === raterId) {
-        const err = new Error('Você não pode avaliar a sua própria apresentação.');
-        err.code = 'SELF_RATING';
-        throw err;
-      }
-
       // Ensure presentation_speaker relation exists so foreign integrity holds
       await db.query(`INSERT INTO presentation_speakers(presentation_id, speaker_id) VALUES($1, $2) ON CONFLICT DO NOTHING`, [presentationId, speaker.id]);
 
@@ -527,7 +755,7 @@ export function makeRepository(db) {
         ON CONFLICT(presentation_id,rater_id,speaker_id)
         DO UPDATE SET stars=EXCLUDED.stars,skills=CASE WHEN EXCLUDED.skills <> '{}'::jsonb THEN EXCLUDED.skills ELSE presentation_ratings.skills END,comment=EXCLUDED.comment,updated_at=NOW()
         RETURNING id,presentation_id,post_id,rater_id,speaker_id,stars,skills,comment,created_at,updated_at`,
-        [presentationId, payload.postId || null, raterId, speaker.id, payload.stars, JSON.stringify(skills), payload.comment || '']);
+        [presentationId, post?.id || null, raterId, speaker.id, payload.stars, JSON.stringify(skills), payload.comment || '']);
 
       await addHistory(raterId, {
         type: 'rating',
@@ -539,31 +767,49 @@ export function makeRepository(db) {
     },
 
     async getSpeakerRatingSummary(speakerId) {
-      const total = await one(`SELECT count(*)::int total_ratings,
-        COALESCE(ROUND(AVG(stars),1),0)::numeric average_stars
-        FROM presentation_ratings WHERE speaker_id=$1`, [speakerId]);
-      const skillRows = await many(`SELECT
-        COALESCE(ROUND(AVG((skills->>'clarity')::numeric),0),0)::int clarity,
-        COALESCE(ROUND(AVG((skills->>'content')::numeric),0),0)::int content,
-        COALESCE(ROUND(AVG((skills->>'engagement')::numeric),0),0)::int engagement,
-        COALESCE(ROUND(AVG((skills->>'storytelling')::numeric),0),0)::int storytelling,
-        COALESCE(ROUND(AVG((skills->>'timing')::numeric),0),0)::int timing,
-        COALESCE(ROUND(AVG((skills->>'visuals')::numeric),0),0)::int visuals
-        FROM presentation_ratings WHERE speaker_id=$1 AND skills <> '{}'::jsonb`, [speakerId]);
-      const recent = await many(`SELECT pr.id,pr.stars,pr.comment,pr.created_at,
-        p.title AS presentation_title,u.name AS rater_name
+      const allRatings = await many(`SELECT stars, skills, comment, created_at, post_id, rater_id
+        FROM presentation_ratings WHERE speaker_id=$1 ORDER BY created_at DESC`, [speakerId]);
+
+      const totalRatings = allRatings.length;
+      let averageStars = 0;
+      const skillsSum = { clarity: 0, content: 0, engagement: 0, storytelling: 0, timing: 0, visuals: 0 };
+      let skillsCount = 0;
+
+      if (totalRatings > 0) {
+        const starSum = allRatings.reduce((acc, r) => acc + Number(r.stars || 0), 0);
+        averageStars = Number((starSum / totalRatings).toFixed(1));
+
+        allRatings.forEach((r) => {
+          const s = typeof r.skills === 'string' ? JSON.parse(r.skills || '{}') : (r.skills || {});
+          if (s && Object.keys(s).length > 0) {
+            skillsCount++;
+            ['clarity', 'content', 'engagement', 'storytelling', 'timing', 'visuals'].forEach((k) => {
+              skillsSum[k] += Number(s[k] || 0);
+            });
+          }
+        });
+      }
+
+      const averageSkills = {};
+      ['clarity', 'content', 'engagement', 'storytelling', 'timing', 'visuals'].forEach((k) => {
+        averageSkills[k] = skillsCount > 0 ? Math.round(skillsSum[k] / skillsCount) : 0;
+      });
+
+      const values = Object.values(averageSkills);
+      const overall = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0;
+
+      const recent = await many(`SELECT pr.id, pr.stars, pr.comment, pr.created_at,
+        p.title AS presentation_title, u.name AS rater_name
         FROM presentation_ratings pr
         LEFT JOIN posts p ON p.id=pr.post_id
         JOIN users u ON u.id=pr.rater_id
         WHERE pr.speaker_id=$1 ORDER BY pr.created_at DESC LIMIT 5`, [speakerId]);
-      const skills = skillRows[0] || {};
-      const values = ['clarity','content','engagement','storytelling','timing','visuals'].map(k => Number(skills[k] || 0));
-      const overall = values.length ? Math.round(values.reduce((a,b) => a+b,0)/values.length) : 0;
+
       return {
-        totalRatings: Number(total?.total_ratings || 0),
-        averageStars: Number(total?.average_stars || 0),
+        totalRatings,
+        averageStars,
         overall,
-        averageSkills: skills,
+        averageSkills,
         recentRatings: recent,
       };
     },

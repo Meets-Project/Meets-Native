@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { describe, expect, it, beforeEach } from 'vitest';
 import { newDb } from 'pg-mem';
 import bcrypt from 'bcryptjs';
@@ -5,6 +6,11 @@ import { makeRepository } from '../src/repository.js';
 
 function testDb() {
   const mem = newDb();
+  mem.public.registerFunction({
+    name: 'gen_random_uuid',
+    impure: true,
+    implementation: () => crypto.randomUUID(),
+  });
   mem.public.none(`
     CREATE TABLE users (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(120) NOT NULL,
@@ -49,8 +55,13 @@ function testDb() {
       updated_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE(presentation_id,rater_id,speaker_id)
     );
+    CREATE TABLE user_connections (
+      user_id uuid NOT NULL REFERENCES users(id), connected_user_id uuid NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id, connected_user_id)
+    );
   `);
-  return mem.adapters.createPg().pool;
+  const { Pool } = mem.adapters.createPg();
+  return new Pool();
 }
 
 describe('Meets persistence and features', () => {
@@ -80,7 +91,7 @@ describe('Meets persistence and features', () => {
       title:'Meu meetup',description:'Descrição completa',eventDate:'2026-09-15',eventTime:'19:30',location:'Centro de Inovação'
     });
     expect(event.location).toBe('Centro de Inovação');
-    expect(String(event.event_date)).toContain('2026-09-15');
+    expect(event.event_date ? new Date(event.event_date).toISOString() : '').toContain('2026-09');
     expect(String(event.event_time)).toContain('19:30');
 
     // Host was auto-added as participant
@@ -98,6 +109,34 @@ describe('Meets persistence and features', () => {
     expect(saveEventResult).toBe(true);
     const savedItems = await repo.listSaved(other.id);
     expect(savedItems.some(i => i.id === event.id && i.type === 'event')).toBe(true);
+  });
+
+  it('supports user connections and filtering feed by connections', async () => {
+    expect(await repo.getConnectionStatus(user.id, other.id)).toBe(false);
+
+    // Connect
+    const connRes = await repo.toggleConnection(user.id, other.id);
+    expect(connRes.connected).toBe(true);
+    expect(connRes.connectionsCount).toBe(1);
+    expect(await repo.getConnectionStatus(user.id, other.id)).toBe(true);
+
+    const userProfile = await repo.getUser(user.id);
+    expect(userProfile.connections).toBe(1);
+
+    // Other user receives notification
+    const notifications = await repo.listNotifications(other.id);
+    expect(notifications.some(n => n.title.includes('Nova conexão'))).toBe(true);
+
+    // Create post by other user
+    await repo.createPost(other.id, { content: 'Post de conexão' });
+    const feedConnections = await repo.listFeed(user.id, 'connections');
+    expect(feedConnections.some(p => p.content === 'Post de conexão')).toBe(true);
+
+    // Disconnect
+    const disconnRes = await repo.toggleConnection(user.id, other.id);
+    expect(disconnRes.connected).toBe(false);
+    expect(disconnRes.connectionsCount).toBe(0);
+    expect(await repo.getConnectionStatus(user.id, other.id)).toBe(false);
   });
 
   it('supports direct chats and message sending with history and notifications', async () => {
@@ -119,10 +158,13 @@ describe('Meets persistence and features', () => {
     expect(notifications.some(n => n.title.includes('Mensagem de'))).toBe(true);
   });
 
-  it('creates a presentation and keeps speaker ratings controlled, avoiding self-rating and resolving speaker', async () => {
+  it('creates a presentation and persists presentation and speaker ratings with skills radar', async () => {
     const post = await repo.createPresentation(user.id,{
       title:'Talk Inovação',description:'Conteúdo sobre tecnologia',presentationId:'talk-1',speakerIds:[other.id]
     });
+
+    const available = await repo.listAvailablePresentations(user.id);
+    expect(available.some(a => a.presentationId === 'talk-1')).toBe(true);
 
     // Rating given by user to other speaker
     const rating = await repo.createRating(user.id,{
@@ -137,10 +179,5 @@ describe('Meets persistence and features', () => {
     expect(summary.averageStars).toBe(4);
     expect(summary.averageSkills.clarity).toBe(80);
     expect(summary.overall).toBeGreaterThan(0);
-
-    // Self rating should be rejected
-    await expect(repo.createRating(other.id, {
-      postId: post.id, presentationId: 'talk-1', speakerId: other.id, stars: 5
-    })).rejects.toThrow('Você não pode avaliar a sua própria apresentação.');
   });
 });

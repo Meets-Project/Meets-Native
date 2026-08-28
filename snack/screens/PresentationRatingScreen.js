@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 import { presentationSkills } from '../data/presentationRatings';
 import { savePresentationRating, buildInitialSkillScores } from '../services/ratingsStorage';
+import { getAvailablePresentations } from '../services/api';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
 
@@ -31,29 +32,72 @@ function buildSkillMap(speakers = []) {
 }
 
 export function PresentationRatingScreen() {
+  const navigation = useNavigation();
   const route = useRoute();
-  const {
-    postId,
-    presentationId,
-    presentationTitle,
-    speakers: rawSpeakers = [],
-    selectedSpeakerId: initialSpeakerId,
-    speakerId: fallbackSpeakerId,
-    speakerName: fallbackSpeakerName,
-  } = route.params || {};
+  const params = route.params || {};
+
+  const [availableList, setAvailableList] = useState([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+
+  const [selectedPostId, setSelectedPostId] = useState(params.postId || '');
+  const [selectedPresId, setSelectedPresId] = useState(params.presentationId || '');
+  const [selectedTitle, setSelectedTitle] = useState(params.presentationTitle || '');
+  const [rawSpeakers, setRawSpeakers] = useState(params.speakers || []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        setLoadingAvailable(true);
+        try {
+          const list = await getAvailablePresentations();
+          if (!active) return;
+          setAvailableList(Array.isArray(list) ? list : []);
+
+          // If no presentation was preselected, pick the first available
+          if (!selectedPresId && !selectedPostId && list?.length > 0) {
+            const first = list[0];
+            setSelectedPostId(first.postId || '');
+            setSelectedPresId(first.presentationId || '');
+            setSelectedTitle(first.title || '');
+            setRawSpeakers(first.speakers || []);
+          }
+        } catch (e) {
+          console.error('Erro ao carregar apresentações disponíveis:', e);
+        } finally {
+          if (active) setLoadingAvailable(false);
+        }
+      })();
+      return () => { active = false; };
+    }, [selectedPresId, selectedPostId]),
+  );
+
+  function handleSelectPresentation(item) {
+    setSelectedPostId(item.postId || '');
+    setSelectedPresId(item.presentationId || '');
+    setSelectedTitle(item.title || '');
+    setRawSpeakers(item.speakers || []);
+    if (item.speakers?.length > 0) {
+      setSelectedSpeakerId(item.speakers[0].id);
+    }
+  }
 
   // Build normalized speakers list
   const speakers = useMemo(() => {
     if (Array.isArray(rawSpeakers) && rawSpeakers.length > 0) {
       return rawSpeakers;
     }
-    if (fallbackSpeakerId) {
-      return [{ id: fallbackSpeakerId, name: fallbackSpeakerName || 'Apresentador', avatar: '🎤' }];
+    if (params.fallbackSpeakerId || params.speakerId) {
+      return [{
+        id: params.fallbackSpeakerId || params.speakerId,
+        name: params.fallbackSpeakerName || params.speakerName || 'Apresentador',
+        avatar: '🎤',
+      }];
     }
     return [];
-  }, [rawSpeakers, fallbackSpeakerId, fallbackSpeakerName]);
+  }, [rawSpeakers, params]);
 
-  const defaultSpeakerId = initialSpeakerId || fallbackSpeakerId || speakers[0]?.id || '';
+  const defaultSpeakerId = params.selectedSpeakerId || params.speakerId || speakers[0]?.id || '';
   const [stars, setStars] = useState(1);
   const [includeSpeakerSkills, setIncludeSpeakerSkills] = useState(false);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState(defaultSpeakerId);
@@ -161,6 +205,13 @@ export function PresentationRatingScreen() {
       return;
     }
 
+    const finalPresId = selectedPresId || (selectedPostId ? `presentation-${selectedPostId}` : '');
+    if (!finalPresId && !selectedPostId) {
+      setFeedback('Selecione uma apresentação ou evento na lista para avaliar.');
+      setIsSuccess(false);
+      return;
+    }
+
     if (includeSpeakerSkills && !selectedSpeaker) {
       setFeedback('Selecione um apresentador para avaliar as habilidades.');
       setIsSuccess(false);
@@ -173,9 +224,9 @@ export function PresentationRatingScreen() {
 
     try {
       await savePresentationRating({
-        postId,
-        presentationId,
-        presentationTitle,
+        postId: selectedPostId || undefined,
+        presentationId: finalPresId || undefined,
+        presentationTitle: selectedTitle || 'Apresentação',
         stars,
         includeSpeakerSkills,
         speakerId: selectedSpeaker?.id || undefined,
@@ -186,6 +237,11 @@ export function PresentationRatingScreen() {
 
       setIsSuccess(true);
       setFeedback('Avaliação salva com sucesso!');
+      setTimeout(() => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        }
+      }, 1200);
     } catch (error) {
       setIsSuccess(false);
       setFeedback(error?.message || 'Não foi possível salvar a avaliação no momento.');
@@ -197,9 +253,63 @@ export function PresentationRatingScreen() {
   return (
     <ScrollView contentContainerStyle={screenStyles.listContent} showsVerticalScrollIndicator={false}>
       <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>{presentationTitle || 'Avaliação de apresentação'}</Text>
+        <Text style={screenStyles.sectionTitle}>{selectedTitle || 'Avaliação de apresentação'}</Text>
         <Text style={screenStyles.sectionText}>A sua avaliação ajuda a comunidade e ranqueia as melhores palestras.</Text>
       </View>
+
+      {availableList.length > 0 ? (
+        <View style={screenStyles.sectionCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <Text style={screenStyles.sectionTitle}>Selecionar evento / apresentação</Text>
+            {loadingAvailable ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+          </View>
+          <Text style={[screenStyles.sectionText, { marginBottom: 10 }]}>
+            Escolha abaixo o evento ou apresentação que você participou:
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+            {availableList.map((item) => {
+              const isSelected = item.presentationId === selectedPresId || (item.postId && item.postId === selectedPostId);
+              return (
+                <TouchableOpacity
+                  key={item.presentationId || item.postId}
+                  style={{
+                    backgroundColor: isSelected ? colors.primary : '#ffffff',
+                    borderWidth: 1.5,
+                    borderColor: isSelected ? colors.primary : colors.border,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    minWidth: 140,
+                    maxWidth: 240,
+                  }}
+                  onPress={() => handleSelectPresentation(item)}
+                >
+                  <Text
+                    style={{
+                      color: isSelected ? '#ffffff' : colors.text,
+                      fontWeight: '700',
+                      fontSize: 13,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.title || 'Apresentação'}
+                  </Text>
+                  <Text
+                    style={{
+                      color: isSelected ? 'rgba(255,255,255,0.85)' : colors.textMuted,
+                      fontSize: 11,
+                      marginTop: 2,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.author?.name ? `por ${item.author.name}` : (item.type === 'event' ? 'Evento' : 'Palestra')}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <View style={screenStyles.sectionCard}>
         <Text style={screenStyles.sectionTitle}>Nota da apresentação</Text>

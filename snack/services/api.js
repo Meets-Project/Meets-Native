@@ -74,8 +74,23 @@ export async function markChatRead(chatId) {
   return (await requestJson(`/chats/${encodeURIComponent(chatId)}/read`, { method: 'POST' })).data;
 }
 
+// --- USER CONNECTIONS ---
+export async function toggleConnection(userId) {
+  return (await requestJson(`/users/${encodeURIComponent(userId)}/connect`, { method: 'POST' })).data;
+}
+
+export async function getConnectionStatus(userId) {
+  return (await requestJson(`/users/${encodeURIComponent(userId)}/connection-status`)).data;
+}
+
+export async function getConnections() {
+  return (await requestJson('/users/connections')).data;
+}
+
 // --- FEED & CONTENT ---
-export async function getFeed() { return (await requestJson('/feed')).data; }
+export async function getFeed(filter = 'all') {
+  return (await requestJson(`/feed?filter=${encodeURIComponent(filter)}`)).data;
+}
 export async function createContent(payload) { return (await requestJson('/content', { method: 'POST', body: JSON.stringify(payload) })).data; }
 export async function getFavorites() { return (await requestJson('/favorites')).data; }
 export async function toggleFavorite(id) { return (await requestJson(`/posts/${id}/favorite`, { method: 'POST' })).data; }
@@ -100,6 +115,10 @@ export async function toggleLike(id) { return (await requestJson(`/posts/${id}/l
 export async function createPost(content, image) { return (await requestJson('/posts', { method: 'POST', body: JSON.stringify({ content, image }) })).data; }
 
 // --- RATINGS ---
+export async function getAvailablePresentations() {
+  return (await requestJson('/ratings/available')).data;
+}
+
 export async function createPresentationRating(payload) {
   return (await requestJson('/ratings/presentations', {
     method: 'POST',
