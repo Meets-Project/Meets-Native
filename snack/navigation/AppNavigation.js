@@ -26,6 +26,10 @@ import { HelpScreen } from '../screens/HelpScreen';
 import { AboutScreen } from '../screens/AboutScreen';
 import { PresentationRatingScreen } from '../screens/PresentationRatingScreen';
 import { SpeakerProfileScreen } from '../screens/SpeakerProfileScreen';
+import { EventDetailScreen } from '../screens/EventDetailScreen';
+import { EventRatingScreen } from '../screens/EventRatingScreen';
+import { RankingScreen } from '../screens/RankingScreen';
+import { DashboardScreen } from '../screens/DashboardScreen';
 import { menuItems } from '../data/menuItens';
 import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
@@ -77,6 +81,10 @@ export default function AppNavigation() {
       ShareProfile: 'Compartilhar perfil',
       PresentationRating: 'Avaliar apresentacao',
       SpeakerProfile: 'Perfil publico',
+      EventDetail: 'Detalhes do evento',
+      EventRating: 'Avaliar evento',
+      Ranking: 'Ranking de apresentadores',
+      Dashboard: 'Dashboard',
     };
     if (detailTitles[routeName]) return detailTitles[routeName];
     const menu = menuItems.find((m) => m.id === routeName);
@@ -143,6 +151,10 @@ export default function AppNavigation() {
           <Stack.Screen name="about" component={AboutScreen} />
           <Stack.Screen name="PresentationRating" component={PresentationRatingScreen} />
           <Stack.Screen name="SpeakerProfile" component={SpeakerProfileScreen} />
+          <Stack.Screen name="EventDetail" component={EventDetailScreen} />
+          <Stack.Screen name="EventRating" component={EventRatingScreen} />
+          <Stack.Screen name="Ranking" component={RankingScreen} />
+          <Stack.Screen name="Dashboard" component={DashboardScreen} />
 
         </Stack.Navigator>
 

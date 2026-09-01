@@ -75,9 +75,8 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
       <Animated.View 
         style={[
           notificationsDrawerStyles.backdrop,
-          { opacity: opacityAnim }
+          { opacity: opacityAnim, pointerEvents: isOpen ? 'auto' : 'none' }
         ]}
-        pointerEvents={isOpen ? 'auto' : 'none'}
       >
         <TouchableOpacity 
           style={notificationsDrawerStyles.backdropTouch}
@@ -92,9 +91,9 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
           {
             width: drawerWidth,
             transform: [{ translateX }],
+            pointerEvents: isOpen ? 'auto' : 'none',
           },
         ]}
-        pointerEvents={isOpen ? 'auto' : 'none'}
       >
         <View style={notificationsDrawerStyles.header}>
           <View style={{ width: 28 }} />

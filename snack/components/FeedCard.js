@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../styles/colors';
 import { feedCardStyles } from '../styles/feedCardStyles';
+import { AnimatedPressable } from './AnimatedPressable';
 
 export function FeedCard({ item }) {
   const navigation = useNavigation();
@@ -50,10 +51,9 @@ export function FeedCard({ item }) {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={feedCardStyles.speakerRateButton}
                 onPress={() =>
-                  // Abre a tela já focada no apresentador selecionado da lista pública do post.
                   navigation.navigate('PresentationRating', {
                     postId: item.id,
                     presentationId: item.presentationId,
@@ -64,7 +64,7 @@ export function FeedCard({ item }) {
                 }
               >
                 <Text style={feedCardStyles.speakerRateButtonText}>Avaliar</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           ))}
         </View>
@@ -77,19 +77,19 @@ export function FeedCard({ item }) {
       ) : null}
 
       <View style={feedCardStyles.cardFooter}>
-        <TouchableOpacity style={feedCardStyles.actionButton} onPress={() => navigation.navigate('favorites')}>
+        <AnimatedPressable style={feedCardStyles.actionButton} onPress={() => navigation.navigate('favorites')}>
           <MaterialCommunityIcons name="heart-outline" size={20} color={colors.primary} />
           <Text style={feedCardStyles.actionText}>{item.likes}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={feedCardStyles.actionButton} onPress={() => navigation.navigate('chat')}>
+        </AnimatedPressable>
+        <AnimatedPressable style={feedCardStyles.actionButton} onPress={() => navigation.navigate('chat')}>
           <MaterialCommunityIcons name="comment-outline" size={20} color={colors.textMuted} />
           <Text style={feedCardStyles.actionText}>Comentar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={feedCardStyles.actionButton} onPress={() => navigation.navigate('create')}>
+        </AnimatedPressable>
+        <AnimatedPressable style={feedCardStyles.actionButton} onPress={() => navigation.navigate('create')}>
           <MaterialCommunityIcons name="share-outline" size={20} color={colors.textMuted} />
-        </TouchableOpacity>
+        </AnimatedPressable>
         {isPresentation ? (
-          <TouchableOpacity
+          <AnimatedPressable
             style={feedCardStyles.actionButton}
             onPress={() =>
               navigation.navigate('PresentationRating', {
@@ -102,7 +102,7 @@ export function FeedCard({ item }) {
           >
             <MaterialCommunityIcons name="star-outline" size={20} color={colors.textMuted} />
             <Text style={feedCardStyles.actionText}>Avaliar apresentacao</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         ) : null}
       </View>
     </View>
