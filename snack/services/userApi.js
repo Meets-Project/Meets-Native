@@ -2,7 +2,8 @@ import { getBackendBaseUrl } from '../data/apiConfig';
 
 async function requestJson(path, options = {}) {
   const baseUrl = getBackendBaseUrl();
-  const response = await fetch(`${baseUrl}${path}`, {
+  const apiBaseUrl = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers || {}),
