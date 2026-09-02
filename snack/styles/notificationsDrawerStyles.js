@@ -5,7 +5,13 @@ const drawerShadow = Platform.select({
   web: {
     boxShadow: '-2px 0px 16px rgba(0, 0, 0, 0.16)',
   },
-  default: { elevation: 5 },
+  default: {
+    shadowColor: colors.shadow,
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
 });
 
 export const notificationsDrawerStyles = StyleSheet.create({

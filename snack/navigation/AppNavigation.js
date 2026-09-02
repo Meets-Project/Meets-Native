@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { MenuDrawer } from '../components/MenuDrawer';
@@ -11,8 +11,15 @@ import { LoadingScreen } from '../screens/LoadingScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { CreateFlowScreen } from '../screens/CreateFlowScreen';
+import { ImageEditorScreen } from '../screens/ImageEditorScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ShareProfileScreen } from '../screens/ShareProfileScreen';
+import { PresentationRatingScreen } from '../screens/PresentationRatingScreen';
+import { SpeakerProfileScreen } from '../screens/SpeakerProfileScreen';
+import { EventDetailScreen } from '../screens/EventDetailScreen';
+import { EventRatingScreen } from '../screens/EventRatingScreen';
+import { RankingScreen } from '../screens/RankingScreen';
+import { DashboardScreen } from '../screens/DashboardScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { CreateScreen } from '../screens/CreateScreen';
@@ -24,19 +31,15 @@ import { SavesScreen } from '../screens/SavesScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { HelpScreen } from '../screens/HelpScreen';
 import { AboutScreen } from '../screens/AboutScreen';
-import { PresentationRatingScreen } from '../screens/PresentationRatingScreen';
-import { SpeakerProfileScreen } from '../screens/SpeakerProfileScreen';
-import { EventDetailScreen } from '../screens/EventDetailScreen';
-import { EventRatingScreen } from '../screens/EventRatingScreen';
-import { RankingScreen } from '../screens/RankingScreen';
-import { DashboardScreen } from '../screens/DashboardScreen';
 import { menuItems } from '../data/menuItens';
 import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
 import { appStyles } from '../styles/appStyles';
+import { getNotifications, onUnauthorized } from '../services/api';
 
-const Stack = createStackNavigator();
+const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
+const navigationRef = createNavigationContainerRef();
 
 function MainTabs() {
   return (
@@ -62,8 +65,19 @@ function MainTabs() {
 export default function AppNavigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const navigationRef = createNavigationContainerRef();
+  const [notifications, setNotifications] = useState([]);
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+    getNotifications().then(setNotifications).catch(() => setNotifications([]));
+  }, [isNotificationsOpen]);
   const [currentRouteName, setCurrentRouteName] = useState('Loading');
+
+  useEffect(() => {
+    return onUnauthorized(() => {
+      if (!navigationRef.isReady()) return;
+      navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+    });
+  }, []);
 
   const getTitleForRoute = (routeName) => {
     if (routeName === 'MainTabs') return 'Resenha';
@@ -77,10 +91,11 @@ export default function AppNavigation() {
     if (tabTitles[routeName]) return tabTitles[routeName];
     const detailTitles = {
       CreateFlow: 'Criar',
+      ImageEditor: 'Editor de imagem',
       EditProfile: 'Editar perfil',
       ShareProfile: 'Compartilhar perfil',
-      PresentationRating: 'Avaliar apresentacao',
-      SpeakerProfile: 'Perfil publico',
+      PresentationRating: 'Avaliar apresentação',
+      SpeakerProfile: 'Perfil público',
       EventDetail: 'Detalhes do evento',
       EventRating: 'Avaliar evento',
       Ranking: 'Ranking de apresentadores',
@@ -106,9 +121,7 @@ export default function AppNavigation() {
       const rootState = state || navigationRef.getRootState();
       const activeName = getActiveRouteName(rootState);
       if (activeName) setCurrentRouteName(activeName);
-    } catch (e) {
-      setCurrentRouteName('Loading');
-    }
+    } catch (e) {}
   };
 
   const authRoutes = new Set(['Loading', 'Login', 'Signup']);
@@ -140,8 +153,15 @@ export default function AppNavigation() {
           <Stack.Screen name="MainTabs" component={MainTabs} />
 
           <Stack.Screen name="CreateFlow" component={CreateFlowScreen} />
+          <Stack.Screen name="ImageEditor" component={ImageEditorScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="ShareProfile" component={ShareProfileScreen} />
+          <Stack.Screen name="PresentationRating" component={PresentationRatingScreen} />
+          <Stack.Screen name="SpeakerProfile" component={SpeakerProfileScreen} />
+          <Stack.Screen name="EventDetail" component={EventDetailScreen} />
+          <Stack.Screen name="EventRating" component={EventRatingScreen} />
+          <Stack.Screen name="Ranking" component={RankingScreen} />
+          <Stack.Screen name="Dashboard" component={DashboardScreen} />
 
           <Stack.Screen name="favorites" component={FavoritesScreen} />
           <Stack.Screen name="history" component={HistoryScreen} />
@@ -149,12 +169,6 @@ export default function AppNavigation() {
           <Stack.Screen name="settings" component={SettingsScreen} />
           <Stack.Screen name="help" component={HelpScreen} />
           <Stack.Screen name="about" component={AboutScreen} />
-          <Stack.Screen name="PresentationRating" component={PresentationRatingScreen} />
-          <Stack.Screen name="SpeakerProfile" component={SpeakerProfileScreen} />
-          <Stack.Screen name="EventDetail" component={EventDetailScreen} />
-          <Stack.Screen name="EventRating" component={EventRatingScreen} />
-          <Stack.Screen name="Ranking" component={RankingScreen} />
-          <Stack.Screen name="Dashboard" component={DashboardScreen} />
 
         </Stack.Navigator>
 
@@ -182,6 +196,7 @@ export default function AppNavigation() {
 
             <NotificationsDrawer
               isOpen={isNotificationsOpen}
+              notifications={notifications}
               onClose={() => setIsNotificationsOpen(false)}
             />
           </>

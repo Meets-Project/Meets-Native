@@ -6,8 +6,4 @@ export const menuItems = [
   { id: 'settings', label: 'Configurações', icon: 'cog' },
   { id: 'help', label: 'Ajuda', icon: 'help-circle' },
   { id: 'about', label: 'Sobre', icon: 'information' },
-  { id: 'EventDetail', label: 'Evento', icon: 'calendar-star' },
-  { id: 'EventRating', label: 'Avaliar Evento', icon: 'star' },
-  { id: 'Ranking', label: 'Ranking', icon: 'trophy' },
-  { id: 'Dashboard', label: 'Dashboard', icon: 'chart-bar' },
 ];

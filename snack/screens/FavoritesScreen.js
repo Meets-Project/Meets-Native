@@ -1,26 +1,6 @@
-import React from 'react';
-import { FlatList, Text, View } from 'react-native';
+import React,{useCallback,useState} from 'react';
+import { ActivityIndicator,FlatList,Text,View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { screenStyles } from '../styles/screenStyles';
-
-const sample = [
-  { id: '1', title: 'Resenha: Matrix', subtitle: 'Ótima análise' },
-  { id: '2', title: 'Resenha: Inception', subtitle: 'Complexa e rica' },
-];
-
-export function FavoritesScreen() {
-  return (
-    <FlatList
-      data={sample}
-      keyExtractor={(i) => i.id}
-      contentContainerStyle={screenStyles.listContent}
-      ItemSeparatorComponent={() => <View style={screenStyles.separator} />}
-      renderItem={({ item }) => (
-        <View style={screenStyles.sectionCard}>
-          <Text style={screenStyles.rowTitle}>{item.title}</Text>
-          <Text style={screenStyles.rowSubtitle}>{item.subtitle}</Text>
-        </View>
-      )}
-      showsVerticalScrollIndicator={false}
-    />
-  );
-}
+import { getFavorites } from '../services/api';
+export function FavoritesScreen(){const [data,setData]=useState([]);const [loading,setLoading]=useState(true);useFocusEffect(useCallback(()=>{let a=true;(async()=>{try{setData(await getFavorites());}finally{if(a)setLoading(false);}})();return()=>{a=false;};},[]));if(loading)return <View style={[screenStyles.listContent,{alignItems:'center'}]}><ActivityIndicator/></View>;return <FlatList data={data} keyExtractor={i=>i.id} contentContainerStyle={screenStyles.listContent} renderItem={({item})=><View style={screenStyles.sectionCard}><Text style={screenStyles.rowTitle}>{item.content}</Text><Text style={screenStyles.rowSubtitle}>Por {item.author_name} · {item.likes} curtidas</Text></View>} ListEmptyComponent={<View style={screenStyles.sectionCard}><Text style={screenStyles.sectionText}>Você ainda não favoritou nenhum post.</Text></View>} ItemSeparatorComponent={()=> <View style={screenStyles.separator}/>}/>;}

@@ -4,14 +4,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { notificationsDrawerStyles } from '../styles/notificationsDrawerStyles';
 import { colors } from '../styles/colors';
-import { notificationsItems } from '../data/notificationsItems';
 
 export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
   const navigation = useNavigation();
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
-  const items = notifications.length > 0 ? notifications : notificationsItems;
+  const useNativeDriver = Platform.OS !== 'web';
+  const items = notifications.map(n => ({...n, message: n.body ? `${n.title}: ${n.body}` : n.title, timestamp: new Date(n.created_at).toLocaleString('pt-BR'), unread: !n.read_at, type: 'profile', icon: 'bell-outline'}));
 
   useEffect(() => {
     if (isOpen) {
@@ -19,12 +19,12 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
         Animated.timing(slideAnim, {
           toValue: 1,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(opacityAnim, {
           toValue: 1,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ]).start();
     } else {
@@ -32,12 +32,12 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(opacityAnim, {
           toValue: 0,
           duration: 300,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ]).start();
     }
@@ -75,8 +75,9 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
       <Animated.View 
         style={[
           notificationsDrawerStyles.backdrop,
-          { opacity: opacityAnim, pointerEvents: isOpen ? 'auto' : 'none' }
+          { opacity: opacityAnim }
         ]}
+        pointerEvents={isOpen ? 'auto' : 'none'}
       >
         <TouchableOpacity 
           style={notificationsDrawerStyles.backdropTouch}
@@ -91,9 +92,9 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
           {
             width: drawerWidth,
             transform: [{ translateX }],
-            pointerEvents: isOpen ? 'auto' : 'none',
           },
         ]}
+        pointerEvents={isOpen ? 'auto' : 'none'}
       >
         <View style={notificationsDrawerStyles.header}>
           <View style={{ width: 28 }} />

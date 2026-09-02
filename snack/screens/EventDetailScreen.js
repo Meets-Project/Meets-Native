@@ -1,184 +1,376 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { screenStyles } from '../styles/screenStyles';
 import { colors } from '../styles/colors';
-import { AnimatedPressable } from '../components/AnimatedPressable';
+import { addComment, deleteComment, getComments, getEvent, getMe, participateEvent, toggleSaveEvent } from '../services/api';
+import { shareContent } from '../services/share';
 
 export function EventDetailScreen() {
   const navigation = useNavigation();
-  const [liked, setLiked] = useState(false);
-  const [marked, setMarked] = useState(false);
-  const [comment, setComment] = useState('');
+  const route = useRoute();
+  const eventId = route.params?.eventId || route.params?.event?.id;
 
-  const event = useMemo(
-    () => ({
-      title: 'Meetup de Product Design',
-      date: '12 de março • 18h30',
-      local: 'São Paulo • Centro de Inovação',
-      participants: 164,
-      rating: 4.8,
-      description:
-        'Sessão prática com estudos de caso sobre experiência do usuário, prototipação e melhoria de jornadas em produtos digitais.',
-      tags: ['Design', 'UX', 'Produto'],
-    }),
-    [],
-  );
+  const [event, setEvent] = useState(route.params?.event || null);
+  const [loading, setLoading] = useState(true);
+  const [isParticipating, setIsParticipating] = useState(Boolean(route.params?.event?.is_participating));
+  const [participantsCount, setParticipantsCount] = useState(Number(route.params?.event?.participants_count || 0));
+  const [isSaved, setIsSaved] = useState(Boolean(route.params?.event?.is_saved));
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
-  const handleShare = () => {
-    Alert.alert('Compartilhar evento', 'Link do evento copiado para a área de transferência.');
-  };
+  useEffect(() => {
+    getMe().then((u) => setCurrentUserId(u?.id)).catch(() => {});
+  }, []);
 
-  const handleComment = () => {
-    if (!comment.trim()) {
-      Alert.alert('Comentário vazio', 'Escreva algo antes de publicar seu comentário.');
+  useEffect(() => {
+    if (!eventId) {
+      setLoading(false);
       return;
     }
+    setLoading(true);
+    Promise.all([
+      getEvent(eventId).catch(() => null),
+      getComments(eventId, true).catch(() => []),
+    ])
+      .then(([evData, commData]) => {
+        if (evData) {
+          setEvent(evData);
+          setIsParticipating(Boolean(evData.is_participating));
+          setParticipantsCount(Number(evData.participants_count || 0));
+          setIsSaved(Boolean(evData.is_saved));
+        }
+        setComments(Array.isArray(commData) ? commData : []);
+      })
+      .finally(() => setLoading(false));
+  }, [eventId]);
 
-    Alert.alert('Comentário enviado', 'Sua contribuição foi registrada no evento.');
-    setComment('');
-  };
+  async function handleToggleParticipate() {
+    if (!eventId) return;
+    try {
+      const res = await participateEvent(eventId);
+      setIsParticipating(Boolean(res.participating));
+      setParticipantsCount(Number(res.participantsCount || 0));
+    } catch (e) {
+      console.error('Erro ao alternar presença:', e);
+    }
+  }
+
+  async function handleToggleSave() {
+    if (!eventId) return;
+    try {
+      const res = await toggleSaveEvent(eventId);
+      setIsSaved(Boolean(res.saved));
+    } catch (e) {
+      console.error('Erro ao salvar evento:', e);
+    }
+  }
+
+  function handleOpenEventChat() {
+    const authorId = event?.author?.id || event?.author_id;
+    const authorName = event?.author?.name || event?.author_name || 'Host';
+    if (authorId) {
+      navigation.navigate('MainTabs', {
+        screen: 'chat',
+        params: {
+          recipientId: authorId,
+          recipientName: `${event?.title || 'Evento'} (Host: ${authorName})`,
+          recipientAvatar: '📅',
+        },
+      });
+    } else {
+      navigation.navigate('MainTabs', { screen: 'chat' });
+    }
+  }
+
+  function handleShare() {
+    if (!eventId) return;
+    shareContent({
+      type: 'event',
+      id: eventId,
+      title: event?.title || 'Evento no Meets',
+      text: event?.title ? `${event.title} - ${event.description || ''}` : event?.description,
+    });
+  }
+
+  async function handleSendComment() {
+    const text = commentText.trim();
+    if (!text || !eventId || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const newComm = await addComment(eventId, text, true);
+      setComments((prev) => [...prev, newComm]);
+      setCommentText('');
+    } catch (e) {
+      console.error('Erro ao adicionar comentário:', e);
+    } finally {
+      setSubmittingComment(false);
+    }
+  }
+
+  async function handleDeleteComment(id) {
+    try {
+      await deleteComment(id);
+      setComments((prev) => prev.filter((c) => c.id !== id));
+    } catch (e) {
+      console.error('Erro ao deletar comentário:', e);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={[screenStyles.listContent, { justifyContent: 'center', alignItems: 'center', minHeight: 360 }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[screenStyles.sectionTitle, { marginTop: 16 }]}>Carregando evento...</Text>
+      </View>
+    );
+  }
+
+  if (!event) {
+    return (
+      <View style={[screenStyles.listContent, { justifyContent: 'center', alignItems: 'center', minHeight: 360 }]}>
+        <MaterialCommunityIcons name="calendar-remove" size={48} color={colors.textMuted} />
+        <Text style={[screenStyles.sectionTitle, { marginTop: 12 }]}>Evento não encontrado.</Text>
+      </View>
+    );
+  }
+
+  const dateStr = event.event_date
+    ? new Date(`${event.event_date}T00:00:00`).toLocaleDateString('pt-BR', { dateStyle: 'full' })
+    : 'Data não informada';
+  const timeStr = event.event_time ? ` às ${String(event.event_time).slice(0, 5)}` : '';
+  const authorName = event.author?.name || event.author_name || 'Organizador';
 
   return (
     <ScrollView contentContainerStyle={screenStyles.listContent} showsVerticalScrollIndicator={false}>
+      {/* Header Card */}
       <View style={screenStyles.sectionCard}>
         <Text style={screenStyles.sectionTitle}>{event.title}</Text>
-        <Text style={screenStyles.sectionText}>{event.date}</Text>
-        <Text style={screenStyles.sectionText}>{event.local}</Text>
+        <Text style={[screenStyles.sectionText, { fontWeight: '700', color: colors.primary, marginTop: 4 }]}>
+          📅 {dateStr}{timeStr}
+        </Text>
+        <Text style={[screenStyles.sectionText, { marginTop: 4 }]}>
+          📍 {event.location || 'Local a definir'}
+        </Text>
+        <Text style={[screenStyles.rowSubtitle, { marginTop: 6 }]}>
+          Organizado por: <Text style={{ fontWeight: '700', color: colors.text }}>{authorName}</Text>
+        </Text>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-          {event.tags.map((tag) => (
-            <View
-              key={tag}
-              style={{
-                backgroundColor: colors.primarySoft,
-                borderRadius: 999,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-              }}
-            >
-              <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{tag}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={{ marginTop: 18, flexDirection: 'row', justifyContent: 'space-between' }}>
+        {/* Stats Row */}
+        <View style={{ marginTop: 18, flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ ...screenStyles.sectionTitle, marginBottom: 0 }}>{event.participants}</Text>
+            <Text style={{ ...screenStyles.sectionTitle, marginBottom: 0 }}>{participantsCount}</Text>
             <Text style={screenStyles.rowSubtitle}>Participantes</Text>
           </View>
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ ...screenStyles.sectionTitle, marginBottom: 0 }}>{event.rating.toFixed(1)}</Text>
-            <Text style={screenStyles.rowSubtitle}>Avaliação</Text>
+            <Text style={{ ...screenStyles.sectionTitle, marginBottom: 0 }}>{comments.length}</Text>
+            <Text style={screenStyles.rowSubtitle}>Comentários</Text>
           </View>
         </View>
       </View>
 
+      {/* Description */}
       <View style={screenStyles.sectionCard}>
         <Text style={screenStyles.sectionTitle}>Sobre o evento</Text>
-        <Text style={screenStyles.sectionText}>{event.description}</Text>
+        <Text style={screenStyles.sectionText}>{event.description || event.content || 'Sem descrição.'}</Text>
       </View>
 
+      {/* Action Buttons */}
       <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>Interações</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <AnimatedPressable
+        <Text style={screenStyles.sectionTitle}>Ações</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+          {/* Participar */}
+          <TouchableOpacity
             style={{
               flex: 1,
-              backgroundColor: liked ? colors.primary : colors.surfaceSoft,
+              backgroundColor: isParticipating ? colors.secondarySoft : colors.primary,
               borderWidth: 1,
-              borderColor: colors.border,
+              borderColor: isParticipating ? colors.secondary : colors.primary,
               borderRadius: 12,
               paddingVertical: 12,
               alignItems: 'center',
+              gap: 4,
             }}
-            onPress={() => setLiked((value) => !value)}
+            onPress={handleToggleParticipate}
           >
-            <MaterialCommunityIcons name={liked ? 'heart' : 'heart-outline'} size={18} color={liked ? '#ffffff' : colors.primary} />
-            <Text style={{ color: liked ? '#ffffff' : colors.text, fontWeight: '700', marginTop: 6 }}>Curtir</Text>
-          </AnimatedPressable>
-
-          <AnimatedPressable
-            style={{
-              flex: 1,
-              backgroundColor: marked ? colors.secondary : colors.surfaceSoft,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 12,
-              paddingVertical: 12,
-              alignItems: 'center',
-            }}
-            onPress={() => setMarked((value) => !value)}
-          >
-            <MaterialCommunityIcons name={marked ? 'calendar-check' : 'calendar-plus'} size={18} color={marked ? '#ffffff' : colors.primary} />
-            <Text style={{ color: marked ? '#ffffff' : colors.text, fontWeight: '700', marginTop: 6 }}>
-              {marked ? 'Presente' : 'Marcar presença'}
+            <MaterialCommunityIcons
+              name={isParticipating ? 'check-circle' : 'plus-circle-outline'}
+              size={20}
+              color={isParticipating ? colors.secondary : '#ffffff'}
+            />
+            <Text style={{ color: isParticipating ? colors.secondary : '#ffffff', fontWeight: '800' }}>
+              {isParticipating ? 'Confirmado' : 'Participar'}
             </Text>
-          </AnimatedPressable>
+          </TouchableOpacity>
+
+          {/* Chat do Evento */}
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: colors.surfaceSoft,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              paddingVertical: 12,
+              alignItems: 'center',
+              gap: 4,
+            }}
+            onPress={handleOpenEventChat}
+          >
+            <MaterialCommunityIcons name="forum-outline" size={20} color={colors.primary} />
+            <Text style={{ color: colors.text, fontWeight: '800' }}>Chat do Evento</Text>
+          </TouchableOpacity>
         </View>
 
-        <AnimatedPressable
-          style={{
-            marginTop: 12,
-            backgroundColor: colors.surfaceSoft,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            paddingVertical: 12,
-            alignItems: 'center',
-          }}
-          onPress={handleShare}
-        >
-          <Text style={{ color: colors.text, fontWeight: '700' }}>Compartilhar evento</Text>
-        </AnimatedPressable>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {/* Compartilhar */}
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: colors.surfaceSoft,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              paddingVertical: 12,
+              alignItems: 'center',
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+            onPress={handleShare}
+          >
+            <MaterialCommunityIcons name="share-variant-outline" size={18} color={colors.text} />
+            <Text style={{ color: colors.text, fontWeight: '700' }}>Compartilhar</Text>
+          </TouchableOpacity>
+
+          {/* Salvar */}
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: colors.surfaceSoft,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              paddingVertical: 12,
+              alignItems: 'center',
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+            onPress={handleToggleSave}
+          >
+            <MaterialCommunityIcons
+              name={isSaved ? 'bookmark' : 'bookmark-outline'}
+              size={18}
+              color={isSaved ? colors.primary : colors.text}
+            />
+            <Text style={{ color: colors.text, fontWeight: '700' }}>
+              {isSaved ? 'Salvo' : 'Salvar'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
+      {/* Comments Section */}
       <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>Comentar</Text>
-        <TextInput
-          value={comment}
-          onChangeText={setComment}
-          placeholder="Escreva sua opinião sobre o evento..."
-          multiline
-          numberOfLines={4}
-          style={{
-            minHeight: 96,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            padding: 12,
-            textAlignVertical: 'top',
-            color: colors.text,
-            backgroundColor: colors.surfaceSoft,
-          }}
-        />
-        <AnimatedPressable
-          style={{
-            marginTop: 12,
-            backgroundColor: colors.primary,
-            borderRadius: 12,
-            paddingVertical: 12,
-            alignItems: 'center',
-          }}
-          onPress={handleComment}
-        >
-          <Text style={{ color: '#ffffff', fontWeight: '800' }}>Enviar comentário</Text>
-        </AnimatedPressable>
-      </View>
+        <Text style={screenStyles.sectionTitle}>Comentários ({comments.length})</Text>
 
-      <AnimatedPressable
-        style={{
-          backgroundColor: colors.primary,
-          borderRadius: 12,
-          paddingVertical: 14,
-          alignItems: 'center',
-          marginTop: 6,
-        }}
-        onPress={() => navigation.navigate('EventRating')}
-      >
-        <Text style={{ color: '#ffffff', fontWeight: '800' }}>Avaliar evento</Text>
-      </AnimatedPressable>
+        {comments.length > 0 ? (
+          <View style={{ gap: 10, marginVertical: 10 }}>
+            {comments.map((item) => {
+              const isMine = currentUserId && item.user_id === currentUserId;
+              const timeStr = item.created_at
+                ? new Date(item.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+                : '';
+
+              return (
+                <View key={item.id} style={styles.commentItem}>
+                  <Text style={{ fontSize: 18 }}>{item.user_avatar || '👤'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{item.user_name}</Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>{timeStr}</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, color: colors.text, marginTop: 2 }}>{item.content}</Text>
+                  </View>
+                  {isMine ? (
+                    <TouchableOpacity onPress={() => handleDeleteComment(item.id)} style={{ padding: 4 }}>
+                      <MaterialCommunityIcons name="trash-can-outline" size={16} color="#e0245e" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={[screenStyles.sectionText, { marginVertical: 8 }]}>
+            Nenhum comentário ainda. Deixe o primeiro comentário!
+          </Text>
+        )}
+
+        {/* Add comment bar */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <TextInput
+            value={commentText}
+            onChangeText={setCommentText}
+            placeholder="Escreva um comentário..."
+            placeholderTextColor={colors.textSubtle}
+            style={{
+              flex: 1,
+              backgroundColor: colors.surfaceSoft,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              color: colors.text,
+              fontSize: 13,
+            }}
+          />
+          <TouchableOpacity
+            style={{
+              backgroundColor: commentText.trim() ? colors.primary : colors.surfaceSoft,
+              borderRadius: 12,
+              paddingHorizontal: 16,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            onPress={handleSendComment}
+            disabled={!commentText.trim() || submittingComment}
+          >
+            {submittingComment ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <MaterialCommunityIcons name="send" size={18} color={commentText.trim() ? '#ffffff' : colors.textMuted} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  commentItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.surfaceSoft,
+    padding: 10,
+    borderRadius: 10,
+    gap: 8,
+  },
+});

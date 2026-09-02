@@ -188,6 +188,7 @@ app.post('/posts', requireAuth, async (req, res, next) => {
       title: z.string().trim().max(160).optional(),
       type: z.enum(['default', 'presentation']).optional(),
       presentationId: z.string().trim().max(160).optional(),
+      mentionedEventId: z.string().uuid().optional().nullable(),
       speakerIds: z.array(z.string().uuid()).max(20).optional(),
     }).parse(req.body);
 
@@ -210,6 +211,59 @@ app.post('/posts', requireAuth, async (req, res, next) => {
       subtitle: (data.title || data.content).slice(0, 120),
     });
     res.status(201).json({ data: post });
+  } catch (e) { next(e); }
+});
+
+app.put('/posts/:id', requireAuth, async (req, res, next) => {
+  try {
+    const data = z.object({
+      title: z.string().trim().max(160).optional(),
+      content: z.string().trim().min(1).max(5000).optional(),
+      image: z.string().max(15000000).optional().nullable(),
+      mentionedEventId: z.string().uuid().optional().nullable(),
+    }).parse(req.body);
+
+    const updated = await repo.updatePost(req.auth.sub, req.params.id, data);
+    res.json({ data: updated });
+  } catch (e) { next(e); }
+});
+
+// --- COMMENTS ROUTES ---
+app.get('/posts/:id/comments', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await repo.listComments(req.params.id) }); } catch (e) { next(e); }
+});
+
+app.post('/posts/:id/comments', requireAuth, async (req, res, next) => {
+  try {
+    const data = z.object({
+      content: z.string().trim().min(1).max(2000),
+    }).parse(req.body);
+
+    const comment = await repo.createComment(req.auth.sub, { postId: req.params.id, content: data.content });
+    res.status(201).json({ data: comment });
+  } catch (e) { next(e); }
+});
+
+app.get('/events/:id/comments', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await repo.listComments(req.params.id) }); } catch (e) { next(e); }
+});
+
+app.post('/events/:id/comments', requireAuth, async (req, res, next) => {
+  try {
+    const data = z.object({
+      content: z.string().trim().min(1).max(2000),
+    }).parse(req.body);
+
+    const comment = await repo.createComment(req.auth.sub, { eventId: req.params.id, content: data.content });
+    res.status(201).json({ data: comment });
+  } catch (e) { next(e); }
+});
+
+app.delete('/comments/:id', requireAuth, async (req, res, next) => {
+  try {
+    const deleted = await repo.deleteComment(req.auth.sub, req.params.id);
+    if (!deleted) return res.status(404).json({ message: 'Comentário não encontrado ou sem permissão.' });
+    res.json({ data: { deleted: true } });
   } catch (e) { next(e); }
 });
 
@@ -267,6 +321,7 @@ app.post('/content', requireAuth, async (req, res, next) => {
       eventTime: z.string().optional(),
       location: z.string().max(255).optional(),
       presentationId: z.string().trim().max(160).optional(),
+      mentionedEventId: z.string().uuid().optional().nullable(),
       speakerIds: z.array(z.string().uuid()).max(20).optional(),
     }).parse(req.body);
 
@@ -306,6 +361,36 @@ app.get('/events/:id/participants', requireAuth, async (req, res, next) => {
   try {
     const participants = await repo.listEventParticipants(req.params.id);
     res.json({ data: participants });
+  } catch (e) { next(e); }
+});
+
+app.get('/events/:id', requireAuth, async (req, res, next) => {
+  try {
+    const event = await repo.getEventById(req.params.id, req.auth.sub);
+    if (!event) return res.status(404).json({ message: 'Evento não encontrado.' });
+    res.json({ data: event });
+  } catch (e) { next(e); }
+});
+
+app.put('/events/:id', requireAuth, async (req, res, next) => {
+  try {
+    const raw = z.object({
+      title: z.string().trim().min(1).max(160).optional(),
+      description: z.string().max(5000).optional(),
+      image: z.string().max(15000000).optional().nullable(),
+      eventDate: z.string().optional(),
+      eventTime: z.string().optional(),
+      location: z.string().max(255).optional(),
+    }).parse(req.body);
+
+    const payload = {
+      ...raw,
+      eventDate: raw.eventDate !== undefined ? normalizeDate(raw.eventDate) : undefined,
+      eventTime: raw.eventTime !== undefined ? normalizeTime(raw.eventTime) : undefined,
+    };
+
+    const updated = await repo.updateEvent(req.auth.sub, req.params.id, payload);
+    res.json({ data: updated });
   } catch (e) { next(e); }
 });
 

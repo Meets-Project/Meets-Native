@@ -196,11 +196,56 @@ export function makeRepository(db) {
       return db.query(`UPDATE chat_members SET unread=0 WHERE chat_id=$1 AND user_id=$2`, [chatId, userId]);
     },
 
+    // --- COMMENTS SYSTEM ---
+    async listComments(targetId) {
+      return many(`
+        SELECT c.id, c.post_id, c.event_id, c.content, c.created_at,
+          u.id AS user_id, u.name AS user_name, u.avatar AS user_avatar, u.role AS user_role
+        FROM post_comments c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.post_id = $1 OR c.event_id = $1
+        ORDER BY c.created_at ASC
+        LIMIT 200
+      `, [targetId]);
+    },
+
+    async createComment(userId, { postId = null, eventId = null, content }) {
+      if (!postId && !eventId) throw new Error('Post ou evento não informado.');
+      const user = await one(`SELECT id, name, avatar, role FROM users WHERE id=$1`, [userId]);
+      const comment = await one(`
+        INSERT INTO post_comments(post_id, event_id, user_id, content)
+        VALUES($1, $2, $3, $4)
+        RETURNING id, post_id, event_id, user_id, content, created_at
+      `, [postId || null, eventId || null, userId, content]);
+
+      await addHistory(userId, {
+        type: 'comment',
+        title: 'Comentou em uma publicação',
+        subtitle: content.slice(0, 100),
+      });
+
+      return {
+        ...comment,
+        user_name: user?.name,
+        user_avatar: user?.avatar,
+        user_role: user?.role,
+      };
+    },
+
+    async deleteComment(userId, commentId) {
+      const result = await db.query(`DELETE FROM post_comments WHERE id=$1 AND user_id=$2 RETURNING id`, [commentId, userId]);
+      return Boolean(result.rows[0]);
+    },
+
     // --- FEED & POSTS ---
     async listPosts(limit = 50) {
-      const rows = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
-        u.id author_id, u.name author_name, u.avatar author_avatar
-        FROM posts p JOIN users u ON u.id=p.author_id
+      const rows = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
+        u.id author_id, u.name author_name, u.avatar author_avatar,
+        (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
+        e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
+        FROM posts p
+        JOIN users u ON u.id=p.author_id
+        LEFT JOIN events e ON e.id=p.mentioned_event_id
         ORDER BY p.created_at DESC LIMIT $1`, [limit]);
 
       return rows.map((p) => ({
@@ -212,6 +257,14 @@ export function makeRepository(db) {
         type: p.type,
         title: p.title,
         presentation_id: p.presentation_id,
+        comments_count: Number(p.comments_count || 0),
+        mentioned_event: p.mentioned_event_id ? {
+          id: p.mentioned_event_id,
+          title: p.mentioned_event_title,
+          event_date: p.mentioned_event_date,
+          event_time: p.mentioned_event_time,
+          location: p.mentioned_event_location,
+        } : null,
         author: { id: p.author_id, name: p.author_name, avatar: p.author_avatar },
         speakers: [],
       }));
@@ -239,9 +292,13 @@ export function makeRepository(db) {
         partEventSet = new Set((partEvents || []).map(r => r.event_id));
       }
 
-      const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
-        u.id author_id, u.name author_name, u.avatar author_avatar
-        FROM posts p JOIN users u ON u.id=p.author_id
+      const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
+        u.id author_id, u.name author_name, u.avatar author_avatar,
+        (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
+        e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
+        FROM posts p
+        JOIN users u ON u.id=p.author_id
+        LEFT JOIN events e ON e.id=p.mentioned_event_id
         ORDER BY p.created_at DESC LIMIT $1`, [limit]);
 
       let formattedPosts = posts.map((p) => ({
@@ -253,6 +310,14 @@ export function makeRepository(db) {
         type: p.type,
         title: p.title,
         presentation_id: p.presentation_id,
+        comments_count: Number(p.comments_count || 0),
+        mentioned_event: p.mentioned_event_id ? {
+          id: p.mentioned_event_id,
+          title: p.mentioned_event_title,
+          event_date: p.mentioned_event_date,
+          event_time: p.mentioned_event_time,
+          location: p.mentioned_event_location,
+        } : null,
         author: { id: p.author_id, name: p.author_name, avatar: p.author_avatar },
         speakers: [],
         is_saved: savedPostSet.has(p.id),
@@ -286,7 +351,8 @@ export function makeRepository(db) {
         many(`SELECT e.id,e.title,e.description AS content,e.image,e.created_at,
           'event'::varchar AS type,''::varchar AS presentation_id,
           u.id author_id, u.name author_name, u.avatar author_avatar,
-          e.event_date,e.event_time,e.location
+          e.event_date,e.event_time,e.location,
+          (SELECT count(*)::int FROM post_comments c WHERE c.event_id=e.id) AS comments_count
         FROM events e JOIN users u ON u.id=e.author_id
         ORDER BY e.created_at DESC LIMIT $1`, [limit]),
         many(`SELECT event_id, count(*)::int AS count FROM event_participants GROUP BY event_id`),
@@ -311,6 +377,7 @@ export function makeRepository(db) {
         event_time: e.event_time,
         location: e.location,
         participants_count: partCountMap[e.id] || 0,
+        comments_count: Number(e.comments_count || 0),
         is_participating: partEventSet.has(e.id),
         is_saved: savedEventSet.has(e.id),
         is_connected: connectedSet.has(e.author_id),
@@ -323,11 +390,29 @@ export function makeRepository(db) {
       return [...formattedPosts, ...formattedEvents].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit);
     },
 
-    async createPost(userId, { content, image, title = '', type = 'default', presentationId = null }) {
-      return one(`INSERT INTO posts(author_id,content,image,title,type,presentation_id)
-        VALUES($1,$2,$3,$4,$5,$6)
-        RETURNING id,content,image,likes,created_at,type,title,presentation_id`,
-        [userId, content, image || null, title || content.slice(0, 160), type, presentationId]);
+    async createPost(userId, { content, image, title = '', type = 'default', presentationId = null, mentionedEventId = null }) {
+      return one(`INSERT INTO posts(author_id,content,image,title,type,presentation_id,mentioned_event_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7)
+        RETURNING id,content,image,likes,created_at,type,title,presentation_id,mentioned_event_id`,
+        [userId, content, image || null, title || content.slice(0, 160), type, presentationId, mentionedEventId || null]);
+    },
+
+    async updatePost(userId, postId, data) {
+      const post = await one(`SELECT id, author_id FROM posts WHERE id=$1 AND author_id=$2`, [postId, userId]);
+      if (!post) {
+        const err = new Error('Publicação não encontrada ou sem permissão para editar.');
+        err.code = 'FORBIDDEN';
+        throw err;
+      }
+      return one(`
+        UPDATE posts SET
+          title = COALESCE($3, title),
+          content = COALESCE($4, content),
+          image = COALESCE($5, image),
+          mentioned_event_id = COALESCE($6, mentioned_event_id)
+        WHERE id = $1 AND author_id = $2
+        RETURNING id, title, content, image, mentioned_event_id, type, presentation_id, likes, created_at
+      `, [postId, userId, data.title ?? null, data.content ?? null, data.image ?? null, data.mentionedEventId ?? null]);
     },
 
     async createPresentation(userId, { title, description = '', image = null, presentationId, speakerIds = [] }) {
@@ -348,9 +433,14 @@ export function makeRepository(db) {
     },
 
     async getPostById(id) {
-      const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,
-        u.id author_id, u.name author_name, u.avatar author_avatar
-        FROM posts p JOIN users u ON u.id=p.author_id WHERE p.id=$1`, [id]);
+      const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
+        u.id author_id, u.name author_name, u.avatar author_avatar,
+        (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
+        e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
+        FROM posts p
+        JOIN users u ON u.id=p.author_id
+        LEFT JOIN events e ON e.id=p.mentioned_event_id
+        WHERE p.id=$1`, [id]);
       if (!p) return null;
       let speakers = [];
       if (p.presentation_id) {
@@ -365,6 +455,14 @@ export function makeRepository(db) {
         type: p.type,
         title: p.title,
         presentation_id: p.presentation_id,
+        comments_count: Number(p.comments_count || 0),
+        mentioned_event: p.mentioned_event_id ? {
+          id: p.mentioned_event_id,
+          title: p.mentioned_event_title,
+          event_date: p.mentioned_event_date,
+          event_time: p.mentioned_event_time,
+          location: p.mentioned_event_location,
+        } : null,
         author: { id: p.author_id, name: p.author_name, avatar: p.author_avatar },
         speakers,
       };
@@ -562,8 +660,10 @@ export function makeRepository(db) {
       }
       if (mode === 'post') {
         return this.createPost(userId, {
+          title: data.title,
           content: data.description ? `${data.title}\n${data.description}` : data.title,
           image: data.image,
+          mentionedEventId: data.mentionedEventId || null,
         });
       }
       if (mode === 'presentation') {
@@ -573,14 +673,100 @@ export function makeRepository(db) {
     },
 
     async listUserPosts(userId) {
-      return many(`SELECT p.id,p.title,p.content,p.image,p.likes,p.type,p.created_at
-        FROM posts p WHERE p.author_id=$1 ORDER BY p.created_at DESC LIMIT 20`, [userId]);
+      const rows = await many(`SELECT p.id,p.title,p.content,p.image,p.likes,p.type,p.created_at,p.mentioned_event_id,
+        (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
+        e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
+        FROM posts p
+        LEFT JOIN events e ON e.id=p.mentioned_event_id
+        WHERE p.author_id=$1 ORDER BY p.created_at DESC LIMIT 50`, [userId]);
+
+      return rows.map((p) => ({
+        id: p.id,
+        title: p.title,
+        content: p.content,
+        image: p.image,
+        likes: p.likes,
+        type: p.type,
+        created_at: p.created_at,
+        comments_count: Number(p.comments_count || 0),
+        mentioned_event: p.mentioned_event_id ? {
+          id: p.mentioned_event_id,
+          title: p.mentioned_event_title,
+          event_date: p.mentioned_event_date,
+          event_time: p.mentioned_event_time,
+          location: p.mentioned_event_location,
+        } : null,
+      }));
+    },
+
+    async updateEvent(userId, eventId, data) {
+      const ev = await one(`SELECT id, author_id FROM events WHERE id=$1 AND author_id=$2`, [eventId, userId]);
+      if (!ev) {
+        const err = new Error('Evento não encontrado ou sem permissão para editar.');
+        err.code = 'FORBIDDEN';
+        throw err;
+      }
+      return one(`
+        UPDATE events SET
+          title = COALESCE($3, title),
+          description = COALESCE($4, description),
+          image = COALESCE($5, image),
+          event_date = COALESCE($6, event_date),
+          event_time = COALESCE($7, event_time),
+          location = COALESCE($8, location)
+        WHERE id = $1 AND author_id = $2
+        RETURNING id, title, description, image, event_date, event_time, location, created_at
+      `, [eventId, userId, data.title ?? null, data.description ?? null, data.image ?? null, data.eventDate ?? null, data.eventTime ?? null, data.location ?? null]);
+    },
+
+    async getEventById(eventId, userId = null) {
+      const ev = await one(`
+        SELECT e.id, e.title, e.description, e.image, e.event_date, e.event_time, e.location, e.created_at,
+          u.id AS author_id, u.name AS author_name, u.avatar AS author_avatar, u.role AS author_role
+        FROM events e
+        JOIN users u ON u.id = e.author_id
+        WHERE e.id = $1
+      `, [eventId]);
+      if (!ev) return null;
+
+      const [partCount, participants, commentsCount, isPart, isSaved] = await Promise.all([
+        one(`SELECT count(*)::int AS count FROM event_participants WHERE event_id=$1`, [eventId]),
+        many(`SELECT u.id, u.name, u.avatar, u.role, ep.status FROM event_participants ep JOIN users u ON u.id=ep.user_id WHERE ep.event_id=$1 ORDER BY ep.created_at ASC`, [eventId]),
+        one(`SELECT count(*)::int AS count FROM post_comments WHERE event_id=$1`, [eventId]),
+        userId ? one(`SELECT 1 FROM event_participants WHERE event_id=$1 AND user_id=$2`, [eventId, userId]) : null,
+        userId ? one(`SELECT 1 FROM saved_events WHERE event_id=$1 AND user_id=$2`, [eventId, userId]) : null,
+      ]);
+
+      return {
+        id: ev.id,
+        title: ev.title,
+        content: ev.description,
+        description: ev.description,
+        image: ev.image,
+        event_date: ev.event_date,
+        event_time: ev.event_time,
+        location: ev.location,
+        created_at: ev.created_at,
+        type: 'event',
+        author: {
+          id: ev.author_id,
+          name: ev.author_name,
+          avatar: ev.author_avatar,
+          role: ev.author_role,
+        },
+        participants_count: Number(partCount?.count || 0),
+        participants: participants || [],
+        comments_count: Number(commentsCount?.count || 0),
+        is_participating: Boolean(isPart),
+        is_saved: Boolean(isSaved),
+      };
     },
 
     async listEvents(userId) {
       return many(`SELECT e.id,e.title,e.description,e.image,e.event_date,e.event_time,e.location,e.created_at,
         u.id author_id,u.name author_name,u.avatar author_avatar,
-        (SELECT count(*)::int FROM event_participants ep WHERE ep.event_id=e.id) AS participants_count
+        (SELECT count(*)::int FROM event_participants ep WHERE ep.event_id=e.id) AS participants_count,
+        (SELECT count(*)::int FROM post_comments c WHERE c.event_id=e.id) AS comments_count
         FROM events e JOIN users u ON u.id=e.author_id
         WHERE e.author_id=$1 ORDER BY COALESCE(e.event_date,e.created_at::date) DESC,e.created_at DESC`, [userId]);
     },

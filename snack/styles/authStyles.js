@@ -6,6 +6,10 @@ const cardShadow = Platform.select({
     boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.08)',
   },
   default: {
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 3,
   },
 });
@@ -34,7 +38,13 @@ export const authStyles = StyleSheet.create({
     marginBottom: 18,
     ...Platform.select({
       web: { boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.18)' },
-      default: { elevation: 4 },
+      default: {
+        shadowColor: colors.shadow,
+        shadowOpacity: 0.18,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 4,
+      },
     }),
   },
   logoMarkText: {
@@ -80,10 +90,7 @@ export const authStyles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 20,
-    ...Platform.select({
-      web: { boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.08)' },
-      default: { elevation: 3 },
-    }),
+    ...cardShadow,
   },
   field: {
     marginBottom: 14,

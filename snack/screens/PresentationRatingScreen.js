@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 import { presentationSkills } from '../data/presentationRatings';
 import { savePresentationRating, buildInitialSkillScores } from '../services/ratingsStorage';
+import { getAvailablePresentations } from '../services/api';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
 
@@ -25,17 +26,78 @@ const visualLevels = [
 function buildSkillMap(speakers = []) {
   const map = {};
   speakers.forEach((speaker) => {
-    // Cada apresentador mantém sua própria trilha de skills durante a sessão de avaliação.
     map[speaker.id] = buildInitialSkillScores();
   });
   return map;
 }
 
 export function PresentationRatingScreen() {
+  const navigation = useNavigation();
   const route = useRoute();
-  const { postId, presentationId, presentationTitle, speakers = [], selectedSpeakerId: initialSpeakerId } = route.params || {};
+  const params = route.params || {};
 
-  const defaultSpeakerId = initialSpeakerId || speakers[0]?.id || '';
+  const [availableList, setAvailableList] = useState([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+
+  const [selectedPostId, setSelectedPostId] = useState(params.postId || '');
+  const [selectedPresId, setSelectedPresId] = useState(params.presentationId || '');
+  const [selectedTitle, setSelectedTitle] = useState(params.presentationTitle || '');
+  const [rawSpeakers, setRawSpeakers] = useState(params.speakers || []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        setLoadingAvailable(true);
+        try {
+          const list = await getAvailablePresentations();
+          if (!active) return;
+          setAvailableList(Array.isArray(list) ? list : []);
+
+          // If no presentation was preselected, pick the first available
+          if (!selectedPresId && !selectedPostId && list?.length > 0) {
+            const first = list[0];
+            setSelectedPostId(first.postId || '');
+            setSelectedPresId(first.presentationId || '');
+            setSelectedTitle(first.title || '');
+            setRawSpeakers(first.speakers || []);
+          }
+        } catch (e) {
+          console.error('Erro ao carregar apresentações disponíveis:', e);
+        } finally {
+          if (active) setLoadingAvailable(false);
+        }
+      })();
+      return () => { active = false; };
+    }, [selectedPresId, selectedPostId]),
+  );
+
+  function handleSelectPresentation(item) {
+    setSelectedPostId(item.postId || '');
+    setSelectedPresId(item.presentationId || '');
+    setSelectedTitle(item.title || '');
+    setRawSpeakers(item.speakers || []);
+    if (item.speakers?.length > 0) {
+      setSelectedSpeakerId(item.speakers[0].id);
+    }
+  }
+
+  // Build normalized speakers list
+  const speakers = useMemo(() => {
+    if (Array.isArray(rawSpeakers) && rawSpeakers.length > 0) {
+      return rawSpeakers;
+    }
+    if (params.fallbackSpeakerId || params.speakerId) {
+      return [{
+        id: params.fallbackSpeakerId || params.speakerId,
+        name: params.fallbackSpeakerName || params.speakerName || 'Apresentador',
+        avatar: '🎤',
+      }];
+    }
+    return [];
+  }, [rawSpeakers, params]);
+
+  const defaultSpeakerId = params.selectedSpeakerId || params.speakerId || speakers[0]?.id || '';
   const [stars, setStars] = useState(1);
   const [includeSpeakerSkills, setIncludeSpeakerSkills] = useState(false);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState(defaultSpeakerId);
@@ -43,13 +105,16 @@ export function PresentationRatingScreen() {
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const selectedSpeaker = useMemo(
-    () => speakers.find((speaker) => speaker.id === selectedSpeakerId) || null,
+    () => speakers.find((speaker) => speaker.id === selectedSpeakerId) || (speakers.length ? speakers[0] : null),
     [speakers, selectedSpeakerId],
   );
 
-  const selectedSkills = skillScoresBySpeaker[selectedSpeakerId] || buildInitialSkillScores();
+  const selectedSkills = (selectedSpeaker?.id && skillScoresBySpeaker[selectedSpeaker.id])
+    ? skillScoresBySpeaker[selectedSpeaker.id]
+    : buildInitialSkillScores();
 
   const speakerOverall = useMemo(() => {
     const values = Object.values(selectedSkills);
@@ -98,17 +163,16 @@ export function PresentationRatingScreen() {
   });
 
   function handleSkillSet(skillId, value) {
-    if (!selectedSpeakerId) {
-      return;
-    }
+    const targetId = selectedSpeaker?.id;
+    if (!targetId) return;
 
     setSkillScoresBySpeaker((current) => {
-      const currentSpeaker = current[selectedSpeakerId] || buildInitialSkillScores();
+      const currentSpeaker = current[targetId] || buildInitialSkillScores();
       const nextValue = Math.max(0, Math.min(99, Number(value) || 0));
 
       return {
         ...current,
-        [selectedSpeakerId]: {
+        [targetId]: {
           ...currentSpeaker,
           [skillId]: nextValue,
         },
@@ -117,18 +181,16 @@ export function PresentationRatingScreen() {
   }
 
   function handleSkillAdjust(skillId, delta) {
-    if (!selectedSpeakerId) {
-      return;
-    }
+    const targetId = selectedSpeaker?.id;
+    if (!targetId) return;
 
     setSkillScoresBySpeaker((current) => {
-      const currentSpeaker = current[selectedSpeakerId] || buildInitialSkillScores();
-      // Mantém a escala no padrão de cards de atributo (0-99).
+      const currentSpeaker = current[targetId] || buildInitialSkillScores();
       const nextValue = Math.max(0, Math.min(99, (currentSpeaker[skillId] || 0) + delta));
 
       return {
         ...current,
-        [selectedSpeakerId]: {
+        [targetId]: {
           ...currentSpeaker,
           [skillId]: nextValue,
         },
@@ -138,35 +200,51 @@ export function PresentationRatingScreen() {
 
   async function handleSubmit() {
     if (stars < 1 || stars > 5) {
-      setFeedback('A avaliacao da apresentacao deve ficar entre 1 e 5 estrelas.');
+      setFeedback('A avaliação da apresentação deve ficar entre 1 e 5 estrelas.');
+      setIsSuccess(false);
+      return;
+    }
+
+    const finalPresId = selectedPresId || (selectedPostId ? `presentation-${selectedPostId}` : '');
+    if (!finalPresId && !selectedPostId) {
+      setFeedback('Selecione uma apresentação ou evento na lista para avaliar.');
+      setIsSuccess(false);
       return;
     }
 
     if (includeSpeakerSkills && !selectedSpeaker) {
       setFeedback('Selecione um apresentador para avaliar as habilidades.');
+      setIsSuccess(false);
       return;
     }
 
     setIsSubmitting(true);
     setFeedback('');
+    setIsSuccess(false);
 
     try {
-      // A nota da apresentação é sempre enviada; skills só contam quando a opção estiver ativa.
       await savePresentationRating({
-        postId,
-        presentationId,
-        presentationTitle,
+        postId: selectedPostId || undefined,
+        presentationId: finalPresId || undefined,
+        presentationTitle: selectedTitle || 'Apresentação',
         stars,
         includeSpeakerSkills,
-        speakerId: selectedSpeaker?.id || '',
+        speakerId: selectedSpeaker?.id || undefined,
         speakerName: selectedSpeaker?.name || '',
         skills: selectedSkills,
         comment,
       });
 
-      setFeedback('Avaliacao enviada com sucesso.');
-    } catch (_error) {
-      setFeedback('Nao foi possivel salvar a avaliacao no momento.');
+      setIsSuccess(true);
+      setFeedback('Avaliação salva com sucesso!');
+      setTimeout(() => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        }
+      }, 1200);
+    } catch (error) {
+      setIsSuccess(false);
+      setFeedback(error?.message || 'Não foi possível salvar a avaliação no momento.');
     } finally {
       setIsSubmitting(false);
     }
@@ -175,12 +253,66 @@ export function PresentationRatingScreen() {
   return (
     <ScrollView contentContainerStyle={screenStyles.listContent} showsVerticalScrollIndicator={false}>
       <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>{presentationTitle || 'Avaliacao de apresentacao'}</Text>
-        <Text style={screenStyles.sectionText}>A avaliacao sempre comeca com 1 estrela e pode ir ate 5.</Text>
+        <Text style={screenStyles.sectionTitle}>{selectedTitle || 'Avaliação de apresentação'}</Text>
+        <Text style={screenStyles.sectionText}>A sua avaliação ajuda a comunidade e ranqueia as melhores palestras.</Text>
       </View>
 
+      {availableList.length > 0 ? (
+        <View style={screenStyles.sectionCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <Text style={screenStyles.sectionTitle}>Selecionar evento / apresentação</Text>
+            {loadingAvailable ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+          </View>
+          <Text style={[screenStyles.sectionText, { marginBottom: 10 }]}>
+            Escolha abaixo o evento ou apresentação que você participou:
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+            {availableList.map((item) => {
+              const isSelected = item.presentationId === selectedPresId || (item.postId && item.postId === selectedPostId);
+              return (
+                <TouchableOpacity
+                  key={item.presentationId || item.postId}
+                  style={{
+                    backgroundColor: isSelected ? colors.primary : '#ffffff',
+                    borderWidth: 1.5,
+                    borderColor: isSelected ? colors.primary : colors.border,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    minWidth: 140,
+                    maxWidth: 240,
+                  }}
+                  onPress={() => handleSelectPresentation(item)}
+                >
+                  <Text
+                    style={{
+                      color: isSelected ? '#ffffff' : colors.text,
+                      fontWeight: '700',
+                      fontSize: 13,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.title || 'Apresentação'}
+                  </Text>
+                  <Text
+                    style={{
+                      color: isSelected ? 'rgba(255,255,255,0.85)' : colors.textMuted,
+                      fontSize: 11,
+                      marginTop: 2,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.author?.name ? `por ${item.author.name}` : (item.type === 'event' ? 'Evento' : 'Palestra')}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+
       <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>Avaliacao da apresentacao</Text>
+        <Text style={screenStyles.sectionTitle}>Nota da apresentação</Text>
         <View style={screenStyles.ratingStarsRow}>
           {[1, 2, 3, 4, 5].map((value) => (
             <TouchableOpacity
@@ -191,7 +323,7 @@ export function PresentationRatingScreen() {
             >
               <MaterialCommunityIcons
                 name={value <= stars ? 'star' : 'star-outline'}
-                size={30}
+                size={32}
                 color={value <= stars ? colors.secondary : colors.textSubtle}
               />
             </TouchableOpacity>
@@ -200,48 +332,50 @@ export function PresentationRatingScreen() {
         <Text style={screenStyles.rowSubtitle}>Nota selecionada: {stars} estrela{stars > 1 ? 's' : ''}</Text>
       </View>
 
-      <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>Apresentadores</Text>
-        <Text style={screenStyles.sectionText}>Selecione quem voce quer avaliar individualmente.</Text>
-
-        <View style={screenStyles.speakersWrap}>
-          {speakers.map((speaker) => {
-            const isActive = selectedSpeakerId === speaker.id;
-
-            return (
-              <TouchableOpacity
-                key={speaker.id}
-                style={[screenStyles.speakerPill, isActive && screenStyles.speakerPillActive]}
-                onPress={() => setSelectedSpeakerId(speaker.id)}
-              >
-                <Text style={[screenStyles.speakerPillText, isActive && screenStyles.speakerPillTextActive]}>
-                  {speaker.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <TouchableOpacity
-          style={screenStyles.inlineToggle}
-          onPress={() => setIncludeSpeakerSkills((current) => !current)}
-        >
-          <MaterialCommunityIcons
-            name={includeSpeakerSkills ? 'checkbox-marked' : 'checkbox-blank-outline'}
-            size={22}
-            color={includeSpeakerSkills ? colors.primary : colors.textMuted}
-          />
-          <Text style={screenStyles.rowTitle}>Avaliar este apresentador tambem</Text>
-        </TouchableOpacity>
-      </View>
-
-      {includeSpeakerSkills ? (
+      {speakers.length > 0 ? (
         <View style={screenStyles.sectionCard}>
-          <Text style={screenStyles.sectionTitle}>Habilidades do apresentador</Text>
-          <Text style={screenStyles.rowSubtitle}>Score geral: {speakerOverall}</Text>
+          <Text style={screenStyles.sectionTitle}>Apresentadores</Text>
+          <Text style={screenStyles.sectionText}>Selecione quem você quer avaliar individualmente.</Text>
+
+          <View style={screenStyles.speakersWrap}>
+            {speakers.map((speaker) => {
+              const isActive = (selectedSpeaker?.id || selectedSpeakerId) === speaker.id;
+
+              return (
+                <TouchableOpacity
+                  key={speaker.id}
+                  style={[screenStyles.speakerPill, isActive && screenStyles.speakerPillActive]}
+                  onPress={() => setSelectedSpeakerId(speaker.id)}
+                >
+                  <Text style={[screenStyles.speakerPillText, isActive && screenStyles.speakerPillTextActive]}>
+                    {speaker.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={screenStyles.inlineToggle}
+            onPress={() => setIncludeSpeakerSkills((current) => !current)}
+          >
+            <MaterialCommunityIcons
+              name={includeSpeakerSkills ? 'checkbox-marked' : 'checkbox-blank-outline'}
+              size={22}
+              color={includeSpeakerSkills ? colors.primary : colors.textMuted}
+            />
+            <Text style={screenStyles.rowTitle}>Avaliar habilidades do apresentador também</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {includeSpeakerSkills && selectedSpeaker ? (
+        <View style={screenStyles.sectionCard}>
+          <Text style={screenStyles.sectionTitle}>Habilidades de {selectedSpeaker.name}</Text>
+          <Text style={screenStyles.rowSubtitle}>Score geral: {speakerOverall} / 99</Text>
 
           <View style={screenStyles.radarChartCard}>
-            <Text style={screenStyles.sectionTitle}>Skills</Text>
+            <Text style={screenStyles.sectionTitle}>Radar de Skills</Text>
             <Svg width={300} height={250} viewBox="0 0 300 250">
               <Circle cx={150} cy={120} r={90} fill={colors.primarySoft} stroke={colors.border} />
               {radarGridLevels.map((polygon, index) => (
@@ -322,7 +456,7 @@ export function PresentationRatingScreen() {
                   <MaterialCommunityIcons name="minus" size={16} color={colors.primary} />
                 </TouchableOpacity>
 
-                <Text style={screenStyles.skillValueText}>{selectedSkills[skill.id]}</Text>
+                <Text style={screenStyles.skillValueText}>{selectedSkills[skill.id] || 0}</Text>
 
                 <TouchableOpacity
                   style={screenStyles.skillAdjustButton}
@@ -360,7 +494,7 @@ export function PresentationRatingScreen() {
 
               <View style={screenStyles.skillLevelRow}>
                 {visualLevels.map((level) => {
-                  const isActive = selectedSkills[skill.id] >= level.value;
+                  const isActive = (selectedSkills[skill.id] || 0) >= level.value;
 
                   return (
                     <TouchableOpacity
@@ -384,27 +518,33 @@ export function PresentationRatingScreen() {
       ) : null}
 
       <View style={screenStyles.sectionCard}>
-        <Text style={screenStyles.sectionTitle}>Comentario (opcional)</Text>
+        <Text style={screenStyles.sectionTitle}>Comentário (opcional)</Text>
         <TextInput
           style={screenStyles.ratingCommentInput}
           value={comment}
           onChangeText={setComment}
-          placeholder="Conte como foi sua experiencia na apresentacao"
+          placeholder="Conte como foi sua experiência na apresentação"
           placeholderTextColor={colors.textSubtle}
           multiline
         />
 
         <TouchableOpacity
-          style={screenStyles.createButton}
+          style={[screenStyles.createButton, isSubmitting && { opacity: 0.7 }]}
           onPress={handleSubmit}
           disabled={isSubmitting}
         >
           <Text style={screenStyles.createButtonText}>
-            {isSubmitting ? 'Enviando...' : 'Enviar avaliacao'}
+            {isSubmitting ? 'Salvando avaliação...' : 'Enviar avaliação'}
           </Text>
         </TouchableOpacity>
 
-        {feedback ? <Text style={[screenStyles.rowSubtitle, { marginTop: 10 }]}>{feedback}</Text> : null}
+        {feedback ? (
+          <View style={{ marginTop: 12, padding: 12, borderRadius: 8, backgroundColor: isSuccess ? '#e6f7eb' : '#fdeeed' }}>
+            <Text style={{ color: isSuccess ? '#1e7e34' : '#d93025', fontWeight: '700', fontSize: 13 }}>
+              {feedback}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </ScrollView>
   );

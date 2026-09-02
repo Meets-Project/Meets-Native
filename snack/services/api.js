@@ -138,8 +138,38 @@ export async function deletePost(id) {
   return (await requestJson(`/posts/${encodeURIComponent(id)}`, { method: 'DELETE' })).data;
 }
 
+export async function updatePost(id, payload) {
+  return (await requestJson(`/posts/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })).data;
+}
+
 export async function deleteEvent(id) {
   return (await requestJson(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' })).data;
+}
+
+export async function updateEvent(id, payload) {
+  return (await requestJson(`/events/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })).data;
+}
+
+export async function getEvent(id) {
+  return (await requestJson(`/events/${encodeURIComponent(id)}`)).data;
+}
+
+// --- COMMENTS ---
+export async function getComments(targetId, isEvent = false) {
+  const path = isEvent ? `/events/${encodeURIComponent(targetId)}/comments` : `/posts/${encodeURIComponent(targetId)}/comments`;
+  return (await requestJson(path)).data;
+}
+
+export async function addComment(targetId, content, isEvent = false) {
+  const path = isEvent ? `/events/${encodeURIComponent(targetId)}/comments` : `/posts/${encodeURIComponent(targetId)}/comments`;
+  return (await requestJson(path, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  })).data;
+}
+
+export async function deleteComment(commentId) {
+  return (await requestJson(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' })).data;
 }
 
 export async function getMyPosts() { return (await requestJson('/posts/mine')).data; }

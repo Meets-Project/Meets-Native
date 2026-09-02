@@ -5,7 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
 import { colors } from '../styles/colors';
-import { createContent, clearToken } from '../services/api';
+import { createContent, clearToken, getMyEvents, getFeed } from '../services/api';
 
 const copy = {
   event: {
@@ -23,7 +23,7 @@ const copy = {
   post: {
     icon: 'post-outline',
     title: 'Publicar atualização',
-    text: 'Compartilhe uma atualização com texto e imagem com sua rede.',
+    text: 'Compartilhe uma atualização com texto, imagem e mencione eventos.',
     cta: 'Publicar',
   },
   presentation: {
@@ -45,6 +45,9 @@ export function CreateFlowScreen() {
   const [eventTime, setEventTime] = useState('');
   const [location, setLocation] = useState('');
   const [image, setImage] = useState(route.params?.editedImage || '');
+  const [mentionedEventId, setMentionedEventId] = useState('');
+  const [availableEvents, setAvailableEvents] = useState([]);
+  const [showEventPicker, setShowEventPicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -60,6 +63,26 @@ export function CreateFlowScreen() {
       setMessage('Imagem editada aplicada.');
     }
   }, [route.params?.editedImage]);
+
+  // Load available events for mention
+  useEffect(() => {
+    if (mode === 'post') {
+      Promise.all([getMyEvents(), getFeed('events')])
+        .then(([mine, feedEvents]) => {
+          const list = [...(mine || []), ...(feedEvents || [])];
+          const unique = [];
+          const seen = new Set();
+          for (const ev of list) {
+            if (ev?.id && !seen.has(ev.id)) {
+              seen.add(ev.id);
+              unique.push(ev);
+            }
+          }
+          setAvailableEvents(unique);
+        })
+        .catch(() => {});
+    }
+  }, [mode]);
 
   async function chooseImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -93,8 +116,11 @@ export function CreateFlowScreen() {
         eventDate: eventDate.trim() || undefined,
         eventTime: eventTime.trim() || undefined,
         location: location.trim() || undefined,
+        mentionedEventId: mentionedEventId || undefined,
       });
-      navigation.goBack();
+
+      // Redireciona para o Início após criar com sucesso
+      navigation.navigate('MainTabs', { screen: 'home' });
     } catch (e) {
       if (e?.status === 401) {
         await clearToken();
@@ -107,6 +133,8 @@ export function CreateFlowScreen() {
       setBusy(false);
     }
   }
+
+  const selectedEvent = availableEvents.find((e) => e.id === mentionedEventId);
 
   return (
     <ScrollView contentContainerStyle={authStyles.scrollContent} keyboardShouldPersistTaps="handled">
@@ -176,6 +204,98 @@ export function CreateFlowScreen() {
                 placeholderTextColor="#9a9a9a"
               />
             </View>
+          </View>
+        ) : null}
+
+        {/* Mencionar Evento no Post */}
+        {mode === 'post' ? (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={authStyles.fieldLabel}>Mencionar Evento (opcional)</Text>
+            {selectedEvent ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: colors.primarySoft,
+                  padding: 10,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.primary,
+                  gap: 10,
+                }}
+              >
+                <MaterialCommunityIcons name="calendar-star" size={22} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                    {selectedEvent.title}
+                  </Text>
+                  {selectedEvent.event_date ? (
+                    <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                      📅 {new Date(`${selectedEvent.event_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity onPress={() => setMentionedEventId('')} style={{ padding: 4 }}>
+                  <MaterialCommunityIcons name="close-circle" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  authStyles.secondaryButton,
+                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+                ]}
+                onPress={() => setShowEventPicker((v) => !v)}
+              >
+                <MaterialCommunityIcons name="calendar-plus" size={18} color={colors.primary} />
+                <Text style={authStyles.secondaryButtonText}>
+                  {showEventPicker ? 'Fechar lista de eventos' : 'Vincular um evento a este post'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {showEventPicker && !selectedEvent ? (
+              <View
+                style={{
+                  marginTop: 8,
+                  backgroundColor: colors.surfaceSoft,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  maxHeight: 180,
+                  padding: 6,
+                }}
+              >
+                {availableEvents.length > 0 ? (
+                  availableEvents.map((ev) => (
+                    <TouchableOpacity
+                      key={ev.id}
+                      style={{
+                        paddingVertical: 8,
+                        paddingHorizontal: 10,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border,
+                      }}
+                      onPress={() => {
+                        setMentionedEventId(ev.id);
+                        setShowEventPicker(false);
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{ev.title}</Text>
+                      {ev.event_date ? (
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                          {new Date(`${ev.event_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                        </Text>
+                      ) : null}
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={{ padding: 10, fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
+                    Nenhum evento encontrado para vincular.
+                  </Text>
+                )}
+              </View>
+            ) : null}
           </View>
         ) : null}
 

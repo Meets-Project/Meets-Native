@@ -11,6 +11,4 @@ export const colors = {
   textSubtle: '#b7b7b7',
   border: '#d7b8b0',
   shadow: '#000000',
-  white: '#ffffff',
-  black: '#000000',
 };
