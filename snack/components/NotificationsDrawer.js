@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions } from 'react-native';
+import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { notificationsDrawerStyles } from '../styles/notificationsDrawerStyles';
