@@ -18,7 +18,8 @@ export async function savePresentationRating(payload) {
   const safeSkills = {};
   skillIds.forEach((id) => {
     const value = payload?.skills?.[id];
-    safeSkills[id] = Math.max(0, Math.min(99, Number(value) || defaultSkillScores[id]));
+    const parsed = Number(value);
+    safeSkills[id] = Math.max(0, Math.min(99, Number.isFinite(parsed) ? parsed : defaultSkillScores[id]));
   });
 
   // Guarda timestamp para exibir historico publico por apresentador.
