@@ -16,9 +16,11 @@ import { screenStyles } from '../styles/screenStyles';
 import { clearToken, getMe, getSettings, updateSettings } from '../services/api';
 import { FormInput } from '../components/FormInput';
 import { validatePassword, validatePasswordMatch } from '../utils/masks';
+import { useTheme } from '../context/ThemeContext';
 
 export function SettingsScreen() {
   const navigation = useNavigation();
+  const { isDark, setIsDark, theme } = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -55,6 +57,7 @@ export function SettingsScreen() {
               notifications_enabled: !!s.value.notifications_enabled,
               dark_mode: !!s.value.dark_mode,
             }));
+            setIsDark(!!s.value.dark_mode);
           }
 
           if (u.status === 'fulfilled' && u.value) {
@@ -78,6 +81,7 @@ export function SettingsScreen() {
   async function handleToggleSetting(key, val) {
     const prev = settings[key];
     setSettings((s) => ({ ...s, [key]: val }));
+    if (key === 'dark_mode') setIsDark(val);
 
     if (key === 'notifications_enabled' || key === 'dark_mode') {
       try {
@@ -87,6 +91,7 @@ export function SettingsScreen() {
         });
       } catch {
         setSettings((s) => ({ ...s, [key]: prev }));
+        if (key === 'dark_mode') setIsDark(prev);
         Alert.alert('Erro', 'Não foi possível salvar a preferência no momento.');
       }
     }
@@ -158,14 +163,14 @@ export function SettingsScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={[screenStyles.listContent, { paddingBottom: 140 }]} showsVerticalScrollIndicator={false}>
+    <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={[screenStyles.listContent, { paddingBottom: 140 }]} showsVerticalScrollIndicator={false}>
       {/* Card de Resumo do Usuário */}
-      <View style={styles.profileCard}>
+      <View style={[styles.profileCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.avatarWrap}>
           <Text style={styles.avatarText}>{user?.name ? user.name.charAt(0).toUpperCase() : '👤'}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.userName}>{user?.name || 'Membro do Meets'}</Text>
+          <Text style={[styles.userName, { color: theme.text }]}>{user?.name || 'Membro do Meets'}</Text>
           <Text style={styles.userEmail}>{user?.email || 'email@exemplo.com'}</Text>
           <Text style={styles.userRole}>{user?.role || 'Membro ativo'}</Text>
         </View>
@@ -180,8 +185,8 @@ export function SettingsScreen() {
       </View>
 
       {/* Seção: Preferências do Aplicativo */}
-      <View style={[screenStyles.sectionCard, { marginTop: 14 }]}>
-        <Text style={screenStyles.sectionTitle}>Preferências do Aplicativo</Text>
+      <View style={[screenStyles.sectionCard, { marginTop: 14, backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <Text style={[screenStyles.sectionTitle, { color: theme.text }]}>Preferências do Aplicativo</Text>
 
         <View style={screenStyles.rowItem}>
           <View style={screenStyles.rowLeft}>
@@ -224,7 +229,7 @@ export function SettingsScreen() {
             </View>
           </View>
           <Switch
-            value={settings.dark_mode}
+            value={settings.dark_mode || isDark}
             onValueChange={(v) => handleToggleSetting('dark_mode', v)}
             trackColor={{ false: '#d9d9d9', true: colors.primarySoft }}
             thumbColor={settings.dark_mode ? colors.primary : '#f4f4f4'}

@@ -21,6 +21,10 @@ export const feedCardStyles = StyleSheet.create({
     fontSize: 32,
     marginRight: 12,
   },
+  avatar: {
+    backgroundColor: colors.primarySoft,
+    marginRight: 2,
+  },
   authorInfo: {
     flex: 1,
   },
@@ -40,7 +44,7 @@ export const feedCardStyles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 12,
   },
-  cardImageImage: { width: '100%', height: 260 },
+  cardImageImage: { width: '100%', height: 280, backgroundColor: '#171717' },
   cardImage: {
     backgroundColor: colors.primarySoft,
     borderRadius: 8,

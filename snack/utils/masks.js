@@ -23,6 +23,18 @@ export function maskTime(value = '') {
   return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
 }
 
+export function formatLocalDate(value, options = {}) {
+  if (!value) return 'Data não informada';
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? 'Data inválida' : value.toLocaleDateString('pt-BR', options);
+  }
+  const raw = String(value).slice(0, 10);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return 'Data inválida';
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? 'Data inválida' : date.toLocaleDateString('pt-BR', options);
+}
+
 /**
  * Aplica máscara de telefone (10 ou 11 dígitos)
  * Ex: (11) 98765-4321 ou (11) 3456-7890

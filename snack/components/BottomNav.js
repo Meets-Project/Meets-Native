@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { bottomNavStyles } from '../styles/bottomNavStyles';
@@ -13,8 +14,10 @@ const tabs = [
 ];
 
 export function BottomNav({ activeTab, onSelectTab }) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={bottomNavStyles.container}>
+    <View style={[bottomNavStyles.container, { paddingBottom: Math.max(12, insets.bottom) }]}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (

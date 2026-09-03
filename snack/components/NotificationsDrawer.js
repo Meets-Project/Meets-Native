@@ -53,6 +53,17 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
     const item = items.find((notification) => notification.id === notificationId);
     if (!item) return;
 
+    if (item.body?.startsWith('rating-presentation:')) {
+      const [postId, presentationId] = item.body.replace('rating-presentation:', '').split(':');
+      onClose();
+      navigation.navigate('PresentationRating', {
+        postId,
+        presentationId,
+        presentationTitle: 'Avaliação de apresentação',
+      });
+      return;
+    }
+
     if (item.type === 'like') {
       navigation.navigate('favorites');
       return;

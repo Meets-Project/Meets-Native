@@ -17,6 +17,7 @@ import { screenStyles } from '../styles/screenStyles';
 import { colors } from '../styles/colors';
 import { addComment, deleteComment, getComments, getEvent, getMe, participateEvent, toggleSaveEvent } from '../services/api';
 import { shareContent } from '../services/share';
+import { formatLocalDate } from '../utils/masks';
 
 export function EventDetailScreen() {
   const navigation = useNavigation();
@@ -149,10 +150,9 @@ export function EventDetailScreen() {
     );
   }
 
-  const dateStr = event.event_date
-    ? new Date(`${event.event_date}T00:00:00`).toLocaleDateString('pt-BR', { dateStyle: 'full' })
-    : 'Data não informada';
+  const dateStr = formatLocalDate(event.event_date, { dateStyle: 'full' });
   const timeStr = event.event_time ? ` às ${String(event.event_time).slice(0, 5)}` : '';
+  const endTimeStr = event.event_end_time ? ` - ${String(event.event_end_time).slice(0, 5)}` : '';
   const authorName = event.author?.name || event.author_name || 'Organizador';
 
   return (
@@ -161,7 +161,7 @@ export function EventDetailScreen() {
       <View style={screenStyles.sectionCard}>
         <Text style={screenStyles.sectionTitle}>{event.title}</Text>
         <Text style={[screenStyles.sectionText, { fontWeight: '700', color: colors.primary, marginTop: 4 }]}>
-          📅 {dateStr}{timeStr}
+          📅 {dateStr}{timeStr}{endTimeStr}
         </Text>
         <Text style={[screenStyles.sectionText, { marginTop: 4 }]}>
           📍 {event.location || 'Local a definir'}

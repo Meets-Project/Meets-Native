@@ -23,7 +23,8 @@ const profileSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   role: z.string().trim().max(80).optional(),
   city: z.string().trim().max(120).optional(),
-  avatar: z.string().max(20).optional(),
+  addressNumber: z.string().trim().max(20).optional(),
+  avatar: z.string().max(5_000_000).optional(),
   bio: z.string().max(1000).optional(),
 }).strict();
 
@@ -319,6 +320,7 @@ app.post('/content', requireAuth, async (req, res, next) => {
       image: z.string().max(15000000).optional(),
       eventDate: z.string().optional(),
       eventTime: z.string().optional(),
+      eventEndTime: z.string().optional(),
       location: z.string().max(255).optional(),
       presentationId: z.string().trim().max(160).optional(),
       mentionedEventId: z.string().uuid().optional().nullable(),
@@ -329,6 +331,7 @@ app.post('/content', requireAuth, async (req, res, next) => {
       ...raw,
       eventDate: normalizeDate(raw.eventDate),
       eventTime: normalizeTime(raw.eventTime),
+      eventEndTime: normalizeTime(raw.eventEndTime),
     };
 
     const item = await repo.createContent(req.auth.sub, payload.mode, payload);
@@ -380,6 +383,7 @@ app.put('/events/:id', requireAuth, async (req, res, next) => {
       image: z.string().max(15000000).optional().nullable(),
       eventDate: z.string().optional(),
       eventTime: z.string().optional(),
+      eventEndTime: z.string().optional(),
       location: z.string().max(255).optional(),
     }).parse(req.body);
 
@@ -387,6 +391,7 @@ app.put('/events/:id', requireAuth, async (req, res, next) => {
       ...raw,
       eventDate: raw.eventDate !== undefined ? normalizeDate(raw.eventDate) : undefined,
       eventTime: raw.eventTime !== undefined ? normalizeTime(raw.eventTime) : undefined,
+      eventEndTime: raw.eventEndTime !== undefined ? normalizeTime(raw.eventEndTime) : undefined,
     };
 
     const updated = await repo.updateEvent(req.auth.sub, req.params.id, payload);

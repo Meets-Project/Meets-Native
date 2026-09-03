@@ -7,7 +7,7 @@ import { authStyles } from '../styles/authStyles';
 import { colors } from '../styles/colors';
 import { createContent, clearToken, getMyEvents, getFeed } from '../services/api';
 import { FormInput } from '../components/FormInput';
-import { dateToISO, validateDate, validateTime } from '../utils/masks';
+import { dateToISO, formatLocalDate, validateDate, validateTime } from '../utils/masks';
 
 const copy = {
   event: {
@@ -46,6 +46,7 @@ export function CreateFlowScreen() {
   const [description, setDescription] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
+  const [eventEndTime, setEventEndTime] = useState('');
   const [location, setLocation] = useState('');
   const [image, setImage] = useState(route.params?.editedImage || '');
   const [mentionedEventId, setMentionedEventId] = useState('');
@@ -120,7 +121,7 @@ export function CreateFlowScreen() {
       setTitleError('');
     }
 
-    if (mode === 'event') {
+    if (mode === 'event' || mode === 'presentation') {
       if (!eventDate.trim()) {
         setDateError('Data do evento é obrigatória.');
         hasValidationError = true;
@@ -132,6 +133,19 @@ export function CreateFlowScreen() {
         } else {
           setDateError('');
         }
+      }
+
+      if (!eventEndTime.trim()) {
+        setTimeError('Horário de fim é obrigatório.');
+        hasValidationError = true;
+      } else if (!validateTime(eventEndTime).valid) {
+        setTimeError(validateTime(eventEndTime).error);
+        hasValidationError = true;
+      }
+
+      if (eventTime && eventEndTime && eventTime >= eventEndTime) {
+        setTimeError('O horário de fim deve ser depois do início.');
+        hasValidationError = true;
       }
 
       if (!eventTime.trim()) {
@@ -169,6 +183,7 @@ export function CreateFlowScreen() {
         image: image || undefined,
         eventDate: eventDate.trim() ? dateToISO(eventDate) : undefined,
         eventTime: eventTime.trim() || undefined,
+        eventEndTime: eventEndTime.trim() || undefined,
         location: location.trim() || undefined,
         mentionedEventId: mentionedEventId || undefined,
       });
@@ -222,7 +237,7 @@ export function CreateFlowScreen() {
           placeholder="Conte mais detalhes sobre este meetup ou conteúdo..."
         />
 
-        {mode === 'event' ? (
+        {mode === 'event' || mode === 'presentation' ? (
           <View style={{ marginBottom: 4 }}>
             <FormInput
               label="Data do Evento"
@@ -249,7 +264,19 @@ export function CreateFlowScreen() {
             />
 
             <FormInput
-              label="Horário"
+              label="Horário de fim"
+              required
+              mask="time"
+              value={eventEndTime}
+              onChangeText={setEventEndTime}
+              placeholder="HH:MM"
+              leftIcon="clock-end"
+              error={timeError}
+              helperText="Informe quando o evento ou apresentação termina."
+            />
+
+            <FormInput
+              label="Horário de início"
               required
               mask="time"
               value={eventTime}
@@ -311,7 +338,7 @@ export function CreateFlowScreen() {
                   </Text>
                   {selectedEvent.event_date ? (
                     <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                      📅 {new Date(`${selectedEvent.event_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                      📅 {formatLocalDate(selectedEvent.event_date)}
                     </Text>
                   ) : null}
                 </View>
@@ -364,7 +391,7 @@ export function CreateFlowScreen() {
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{ev.title}</Text>
                       {ev.event_date ? (
                         <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                          {new Date(`${ev.event_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                          {formatLocalDate(ev.event_date)}
                         </Text>
                       ) : null}
                     </TouchableOpacity>

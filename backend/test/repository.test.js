@@ -15,7 +15,7 @@ function testDb() {
     CREATE TABLE users (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(120) NOT NULL,
       email varchar(255) NOT NULL UNIQUE, password_hash text NOT NULL,
-      role varchar(80) NOT NULL DEFAULT 'Membro', city varchar(120) NOT NULL DEFAULT 'São Paulo',
+      role varchar(80) NOT NULL DEFAULT 'Membro', city varchar(120) NOT NULL DEFAULT 'São Paulo', address_number varchar(20) NOT NULL DEFAULT '',
       avatar varchar(20) NOT NULL DEFAULT '👤', bio text NOT NULL DEFAULT '',
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -23,7 +23,7 @@ function testDb() {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
       content text NOT NULL, image text, likes integer NOT NULL DEFAULT 0,
       title varchar(160) NOT NULL DEFAULT '', type varchar(30) NOT NULL DEFAULT 'default',
-      presentation_id varchar(160), mentioned_event_id uuid, created_at timestamptz NOT NULL DEFAULT now()
+      presentation_id varchar(160), event_date date, event_time time, event_end_time time, mentioned_event_id uuid, created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE post_likes (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
     CREATE TABLE favorites (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
@@ -31,7 +31,7 @@ function testDb() {
     CREATE TABLE events (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
       title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', image text,
-      event_date date, event_time time, location varchar(255) NOT NULL DEFAULT '',
+      event_date date, event_time time, event_end_time time, location varchar(255) NOT NULL DEFAULT '',
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE saved_events (user_id uuid NOT NULL REFERENCES users(id), event_id uuid NOT NULL REFERENCES events(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,event_id));

@@ -10,7 +10,7 @@ export function getShareUrl(type, id) {
 
 export async function shareContent({ type = 'post', id = '', title = 'Meets', text = '' }) {
   const url = getShareUrl(type, id);
-  const shareMessage = text ? `${text}\n\nConfira no Meets: ${url}` : `Confira no Meets: ${url}`;
+  const shareMessage = `Confira no Meets: ${url}`;
 
   // Tenta copiar para o Clipboard
   let copied = false;

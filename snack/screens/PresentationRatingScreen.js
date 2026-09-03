@@ -1,11 +1,10 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 import { presentationSkills } from '../data/presentationRatings';
 import { savePresentationRating, buildInitialSkillScores } from '../services/ratingsStorage';
-import { getAvailablePresentations } from '../services/api';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
 
@@ -35,52 +34,13 @@ export function PresentationRatingScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const params = route.params || {};
-
-  const [availableList, setAvailableList] = useState([]);
-  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const availableList = [];
+  const loadingAvailable = false;
 
   const [selectedPostId, setSelectedPostId] = useState(params.postId || '');
   const [selectedPresId, setSelectedPresId] = useState(params.presentationId || '');
   const [selectedTitle, setSelectedTitle] = useState(params.presentationTitle || '');
   const [rawSpeakers, setRawSpeakers] = useState(params.speakers || []);
-
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      (async () => {
-        setLoadingAvailable(true);
-        try {
-          const list = await getAvailablePresentations();
-          if (!active) return;
-          setAvailableList(Array.isArray(list) ? list : []);
-
-          // If no presentation was preselected, pick the first available
-          if (!selectedPresId && !selectedPostId && list?.length > 0) {
-            const first = list[0];
-            setSelectedPostId(first.postId || '');
-            setSelectedPresId(first.presentationId || '');
-            setSelectedTitle(first.title || '');
-            setRawSpeakers(first.speakers || []);
-          }
-        } catch (e) {
-          console.error('Erro ao carregar apresentações disponíveis:', e);
-        } finally {
-          if (active) setLoadingAvailable(false);
-        }
-      })();
-      return () => { active = false; };
-    }, [selectedPresId, selectedPostId]),
-  );
-
-  function handleSelectPresentation(item) {
-    setSelectedPostId(item.postId || '');
-    setSelectedPresId(item.presentationId || '');
-    setSelectedTitle(item.title || '');
-    setRawSpeakers(item.speakers || []);
-    if (item.speakers?.length > 0) {
-      setSelectedSpeakerId(item.speakers[0].id);
-    }
-  }
 
   // Build normalized speakers list
   const speakers = useMemo(() => {
@@ -207,7 +167,7 @@ export function PresentationRatingScreen() {
 
     const finalPresId = selectedPresId || (selectedPostId ? `presentation-${selectedPostId}` : '');
     if (!finalPresId && !selectedPostId) {
-      setFeedback('Selecione uma apresentação ou evento na lista para avaliar.');
+      setFeedback('Abra esta tela pelo botão de avaliação do item concluído.');
       setIsSuccess(false);
       return;
     }

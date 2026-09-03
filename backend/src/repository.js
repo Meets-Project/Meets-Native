@@ -27,7 +27,7 @@ export function makeRepository(db) {
     },
 
     async getUser(id) {
-      const user = await one(`SELECT id,name,email,role,city,avatar,bio,created_at,updated_at FROM users WHERE id=$1`, [id]);
+      const user = await one(`SELECT id,name,email,role,city,address_number,avatar,bio,created_at,updated_at FROM users WHERE id=$1`, [id]);
       if (!user) return null;
       const [events, connections, ratings] = await Promise.all([
         one(`SELECT count(*)::int total FROM events WHERE author_id=$1`, [id]),
@@ -51,9 +51,9 @@ export function makeRepository(db) {
 
     async updateUser(id, data) {
       return one(`UPDATE users SET name=COALESCE($2,name), role=COALESCE($3,role),
-        city=COALESCE($4,city), avatar=COALESCE($5,avatar), bio=COALESCE($6,bio), updated_at=NOW()
-        WHERE id=$1 RETURNING id,name,email,role,city,avatar,bio,created_at,updated_at`,
-        [id, data.name ?? null, data.role ?? null, data.city ?? null, data.avatar ?? null, data.bio ?? null]);
+        city=COALESCE($4,city), address_number=COALESCE($5,address_number), avatar=COALESCE($6,avatar), bio=COALESCE($7,bio), updated_at=NOW()
+        WHERE id=$1 RETURNING id,name,email,role,city,address_number,avatar,bio,created_at,updated_at`,
+        [id, data.name ?? null, data.role ?? null, data.city ?? null, data.addressNumber ?? null, data.avatar ?? null, data.bio ?? null]);
     },
 
     async search(term) {
@@ -293,7 +293,7 @@ export function makeRepository(db) {
         partEventSet = new Set((partEvents || []).map(r => r.event_id));
       }
 
-      const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
+      const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.event_date,p.event_time,p.event_end_time,p.mentioned_event_id,
         u.id author_id, u.name author_name, u.avatar author_avatar,
         COALESCE(c.comments_count, 0)::int AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
@@ -312,6 +312,9 @@ export function makeRepository(db) {
         type: p.type,
         title: p.title,
         presentation_id: p.presentation_id,
+        event_date: p.event_date,
+        event_time: p.event_time,
+        event_end_time: p.event_end_time,
         comments_count: Number(p.comments_count || 0),
         mentioned_event: p.mentioned_event_id ? {
           id: p.mentioned_event_id,
@@ -353,7 +356,7 @@ export function makeRepository(db) {
         many(`SELECT e.id,e.title,e.description AS content,e.image,e.created_at,
           'event'::varchar AS type,''::varchar AS presentation_id,
           u.id author_id, u.name author_name, u.avatar author_avatar,
-          e.event_date,e.event_time,e.location,
+          e.event_date,e.event_time,e.event_end_time,e.location,
           COALESCE(c.comments_count, 0)::int AS comments_count
         FROM events e JOIN users u ON u.id=e.author_id
         LEFT JOIN (SELECT event_id, count(*)::int AS comments_count FROM post_comments GROUP BY event_id) c ON c.event_id=e.id
@@ -378,6 +381,7 @@ export function makeRepository(db) {
         speakers: [],
         event_date: e.event_date,
         event_time: e.event_time,
+        event_end_time: e.event_end_time,
         location: e.location,
         participants_count: partCountMap[e.id] || 0,
         comments_count: Number(e.comments_count || 0),
@@ -393,11 +397,11 @@ export function makeRepository(db) {
       return [...formattedPosts, ...formattedEvents].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit);
     },
 
-    async createPost(userId, { content, image, title = '', type = 'default', presentationId = null, mentionedEventId = null }) {
-      return one(`INSERT INTO posts(author_id,content,image,title,type,presentation_id,mentioned_event_id)
-        VALUES($1,$2,$3,$4,$5,$6,$7)
-        RETURNING id,content,image,likes,created_at,type,title,presentation_id,mentioned_event_id`,
-        [userId, content, image || null, title || content.slice(0, 160), type, presentationId, mentionedEventId || null]);
+    async createPost(userId, { content, image, title = '', type = 'default', presentationId = null, mentionedEventId = null, eventDate = null, eventTime = null, eventEndTime = null }) {
+      return one(`INSERT INTO posts(author_id,content,image,title,type,presentation_id,mentioned_event_id,event_date,event_time,event_end_time)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING id,content,image,likes,created_at,type,title,presentation_id,mentioned_event_id,event_date,event_time,event_end_time`,
+        [userId, content, image || null, title || content.slice(0, 160), type, presentationId, mentionedEventId || null, eventDate || null, eventTime || null, eventEndTime || null]);
     },
 
     async updatePost(userId, postId, data) {
@@ -418,7 +422,7 @@ export function makeRepository(db) {
       `, [postId, userId, data.title ?? null, data.content ?? null, data.image ?? null, data.mentionedEventId ?? null]);
     },
 
-    async createPresentation(userId, { title, description = '', image = null, presentationId, speakerIds = [] }) {
+    async createPresentation(userId, { title, description = '', image = null, presentationId, speakerIds = [], eventDate, eventTime, eventEndTime }) {
       const id = presentationId || `presentation-${crypto.randomUUID()}`;
       const post = await this.createPost(userId, {
         content: description || title,
@@ -426,6 +430,9 @@ export function makeRepository(db) {
         title,
         type: 'presentation',
         presentationId: id,
+        eventDate,
+        eventTime,
+        eventEndTime,
       });
       const ids = [...new Set([userId, ...(speakerIds || [])])];
       for (const speakerId of ids) {
@@ -436,7 +443,7 @@ export function makeRepository(db) {
     },
 
     async getPostById(id) {
-      const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
+      const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.event_date,p.event_time,p.event_end_time,p.mentioned_event_id,
         u.id author_id, u.name author_name, u.avatar author_avatar,
         COALESCE(c.comments_count, 0)::int AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
@@ -459,6 +466,9 @@ export function makeRepository(db) {
         type: p.type,
         title: p.title,
         presentation_id: p.presentation_id,
+        event_date: p.event_date,
+        event_time: p.event_time,
+        event_end_time: p.event_end_time,
         comments_count: Number(p.comments_count || 0),
         mentioned_event: p.mentioned_event_id ? {
           id: p.mentioned_event_id,
@@ -648,11 +658,11 @@ export function makeRepository(db) {
     async createContent(userId, mode, data) {
       if (mode === 'event') {
         // Auto-add author as participant
-        const event = await one(`INSERT INTO events(author_id,title,description,image,event_date,event_time,location)
-          VALUES($1,$2,$3,$4,$5,$6,$7)
-          RETURNING id,title,description,image,event_date,event_time,location,created_at`,
+        const event = await one(`INSERT INTO events(author_id,title,description,image,event_date,event_time,event_end_time,location)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+          RETURNING id,title,description,image,event_date,event_time,event_end_time,location,created_at`,
           [userId, data.title, data.description || '', data.image || null,
-           data.eventDate || null, data.eventTime || null, data.location || '']);
+           data.eventDate || null, data.eventTime || null, data.eventEndTime || null, data.location || '']);
 
         await db.query(`INSERT INTO event_participants(event_id, user_id, status) VALUES($1, $2, 'host') ON CONFLICT DO NOTHING`, [event.id, userId]);
         return event;
@@ -717,15 +727,16 @@ export function makeRepository(db) {
           image = COALESCE($5, image),
           event_date = COALESCE($6, event_date),
           event_time = COALESCE($7, event_time),
-          location = COALESCE($8, location)
+          event_end_time = COALESCE($8, event_end_time),
+          location = COALESCE($9, location)
         WHERE id = $1 AND author_id = $2
-        RETURNING id, title, description, image, event_date, event_time, location, created_at
-      `, [eventId, userId, data.title ?? null, data.description ?? null, data.image ?? null, data.eventDate ?? null, data.eventTime ?? null, data.location ?? null]);
+        RETURNING id, title, description, image, event_date, event_time, event_end_time, location, created_at
+      `, [eventId, userId, data.title ?? null, data.description ?? null, data.image ?? null, data.eventDate ?? null, data.eventTime ?? null, data.eventEndTime ?? null, data.location ?? null]);
     },
 
     async getEventById(eventId, userId = null) {
       const ev = await one(`
-        SELECT e.id, e.title, e.description, e.image, e.event_date, e.event_time, e.location, e.created_at,
+        SELECT e.id, e.title, e.description, e.image, e.event_date, e.event_time, e.event_end_time, e.location, e.created_at,
           u.id AS author_id, u.name AS author_name, u.avatar AS author_avatar, u.role AS author_role
         FROM events e
         JOIN users u ON u.id = e.author_id
@@ -749,6 +760,7 @@ export function makeRepository(db) {
         image: ev.image,
         event_date: ev.event_date,
         event_time: ev.event_time,
+        event_end_time: ev.event_end_time,
         location: ev.location,
         created_at: ev.created_at,
         type: 'event',

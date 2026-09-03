@@ -11,6 +11,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
+import { formatLocalDate } from '../utils/masks';
 import { getSaves, toggleSave } from '../services/api';
 
 export function SavesScreen() {
@@ -169,7 +170,7 @@ export function SavesScreen() {
                 <View style={{ backgroundColor: colors.background, padding: 10, borderRadius: 8, marginBottom: 8, gap: 4 }}>
                   {item.event_date ? (
                     <Text style={{ fontSize: 12, color: colors.text, fontWeight: '600' }}>
-                      📅 {new Date(`${item.event_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                      📅 {formatLocalDate(item.event_date)}
                       {item.event_time ? ` às ${String(item.event_time).slice(0, 5)}` : ''}
                     </Text>
                   ) : null}

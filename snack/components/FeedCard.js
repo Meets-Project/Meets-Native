@@ -7,6 +7,8 @@ import { feedCardStyles } from '../styles/feedCardStyles';
 import { getEventParticipants, participateEvent, toggleConnection, toggleLike, toggleSave } from '../services/api';
 import { CommentsModal } from './CommentsModal';
 import { shareContent } from '../services/share';
+import { AvatarImage, isImageUri } from './AvatarImage';
+import { formatLocalDate } from '../utils/masks';
 
 export function FeedCard({ item, onRefresh }) {
   const navigation = useNavigation();
@@ -143,7 +145,7 @@ export function FeedCard({ item, onRefresh }) {
           style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
           onPress={handleOpenAuthorProfile}
         >
-          <Text style={feedCardStyles.avatarEmoji}>{authorAvatar}</Text>
+          <AvatarImage value={authorAvatar} size={42} style={feedCardStyles.avatar} />
           <View style={feedCardStyles.authorInfo}>
             <Text style={feedCardStyles.authorName}>{authorName}</Text>
             <Text style={feedCardStyles.timestamp}>{item.timestamp || ''}</Text>
@@ -198,13 +200,20 @@ export function FeedCard({ item, onRefresh }) {
         <Text style={feedCardStyles.presentationTitle}>{item.title}</Text>
       ) : null}
 
+      {isPresentation && item.event_date ? (
+        <Text style={feedCardStyles.eventMetaText}>
+          📅 {formatLocalDate(item.event_date)}{item.event_time ? ` às ${String(item.event_time).slice(0, 5)}` : ''}{item.event_end_time ? ` - ${String(item.event_end_time).slice(0, 5)}` : ''}
+        </Text>
+      ) : null}
+
       {/* Event Details and Participant Controls */}
       {isEvent ? (
         <View style={{ backgroundColor: colors.background, padding: 12, borderRadius: 10, marginBottom: 12, gap: 6 }}>
           <View style={feedCardStyles.eventMeta}>
             <Text style={feedCardStyles.eventMetaText}>
-              📅 {item.event_date ? new Date(`${item.event_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Data não informada'}
+              📅 {formatLocalDate(item.event_date)}
               {item.event_time ? ` às ${String(item.event_time).slice(0, 5)}` : ''}
+              {item.event_end_time ? ` - ${String(item.event_end_time).slice(0, 5)}` : ''}
             </Text>
             <Text style={feedCardStyles.eventMetaText}>📍 {item.location || 'Local não informado'}</Text>
           </View>
@@ -311,7 +320,7 @@ export function FeedCard({ item, onRefresh }) {
             </Text>
             {mentionedEvent.event_date ? (
               <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
-                📅 {new Date(`${mentionedEvent.event_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                📅 {formatLocalDate(mentionedEvent.event_date)}
                 {mentionedEvent.event_time ? ` às ${String(mentionedEvent.event_time).slice(0, 5)}` : ''}
                 {mentionedEvent.location ? ` · 📍 ${mentionedEvent.location}` : ''}
               </Text>
@@ -341,22 +350,6 @@ export function FeedCard({ item, onRefresh }) {
                   <Text style={feedCardStyles.speakerName}>{speaker.name}</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={feedCardStyles.speakerRateButton}
-                onPress={() =>
-                  navigation.navigate('PresentationRating', {
-                    postId: item.id,
-                    presentationId: item.presentation_id,
-                    presentationTitle: item.title || item.content,
-                    speakers,
-                    selectedSpeakerId: speaker.id,
-                    speakerId: speaker.id,
-                    speakerName: speaker.name,
-                  })
-                }
-              >
-                <Text style={feedCardStyles.speakerRateButtonText}>Avaliar</Text>
-              </TouchableOpacity>
             </View>
           ))}
         </View>
@@ -365,7 +358,11 @@ export function FeedCard({ item, onRefresh }) {
       {/* Image */}
       {item.image ? (
         <View style={feedCardStyles.cardImage}>
-          <Image source={{ uri: item.image }} style={feedCardStyles.cardImageImage} resizeMode="cover" />
+          {isImageUri(item.image) ? (
+            <Image source={{ uri: item.image }} style={feedCardStyles.cardImageImage} resizeMode="contain" />
+          ) : (
+            <Text style={feedCardStyles.cardImageEmoji}>{item.image}</Text>
+          )}
         </View>
       ) : null}
 
@@ -413,26 +410,6 @@ export function FeedCard({ item, onRefresh }) {
           <Text style={feedCardStyles.actionText}>{saved ? 'Salvo' : 'Salvar'}</Text>
         </TouchableOpacity>
 
-        {isPresentation ? (
-          <TouchableOpacity
-            style={feedCardStyles.actionButton}
-            onPress={() =>
-              navigation.navigate('PresentationRating', {
-                postId: item.id,
-                presentationId: item.presentation_id || `presentation-${item.id}`,
-                presentationTitle: item.title || item.content,
-                speakers,
-                speakerId: speakers[0]?.id || authorId,
-                speakerName: speakers[0]?.name || authorName,
-              })
-            }
-          >
-            <MaterialCommunityIcons name="star-outline" size={20} color={colors.secondary} />
-            <Text style={[feedCardStyles.actionText, { color: colors.secondary, fontWeight: '700' }]}>
-              Avaliar
-            </Text>
-          </TouchableOpacity>
-        ) : null}
       </View>
 
       {/* Comments Modal */}

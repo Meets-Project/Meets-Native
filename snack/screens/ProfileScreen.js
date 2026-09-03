@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AvatarImage } from '../components/AvatarImage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { screenStyles } from '../styles/screenStyles';
@@ -18,6 +19,7 @@ import { deleteEvent, deletePost, getMyEvents, getMyPosts, getSpeakerRatingSumma
 import { CommentsModal } from '../components/CommentsModal';
 import { EditContentModal } from '../components/EditContentModal';
 import { shareContent } from '../services/share';
+import { formatLocalDate } from '../utils/masks';
 
 function toSafeNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') {
@@ -159,7 +161,7 @@ export function ProfileScreen() {
       {/* HERO PERFIL */}
       <View style={screenStyles.profileHeroCard}>
         <View style={screenStyles.profileAvatarWrap}>
-          <Text style={screenStyles.profileAvatar}>{profile.avatar}</Text>
+          <AvatarImage value={profile.avatar} size={92} style={{ backgroundColor: colors.primarySoft }} />
         </View>
 
         <Text style={screenStyles.profileName}>{profile.name}</Text>
@@ -351,7 +353,7 @@ export function ProfileScreen() {
                   <Text style={screenStyles.rowTitle}>{event.title}</Text>
                 </View>
                 <Text style={screenStyles.rowSubtitle}>
-                  {event.event_date ? new Date(`${event.event_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Data não informada'}
+                  {formatLocalDate(event.event_date)}
                   {event.event_time ? ` às ${String(event.event_time).slice(0, 5)}` : ''}
                   {event.location ? ` · ${event.location}` : ''}
                 </Text>

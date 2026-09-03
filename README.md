@@ -63,3 +63,7 @@ Para rodar os testes automatizados do backend:
 ```bash
 npm test
 ```
+
+## Deploy no Render
+
+Consulte [RENDER.md](RENDER.md) para publicar o PostgreSQL, a API e o frontend Expo Web usando o repositório público do GitHub.

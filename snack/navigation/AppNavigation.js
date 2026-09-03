@@ -37,6 +37,7 @@ import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
 import { appStyles } from '../styles/appStyles';
 import { getNotifications, onUnauthorized } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -64,6 +65,7 @@ function MainTabs() {
 }
 
 export default function AppNavigation() {
+  const { theme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -149,7 +151,7 @@ export default function AppNavigation() {
       onReady={syncCurrentRoute}
       onStateChange={syncCurrentRoute}
     >
-      <View style={appStyles.safeArea}>
+      <View style={[appStyles.safeArea, { backgroundColor: theme.background }]}>
         {showChrome ? (
           <ScreenHeader
             title={headerTitle}
