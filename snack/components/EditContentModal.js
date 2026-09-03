@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -7,13 +7,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { updateEvent, updatePost } from '../services/api';
+import { FormInput } from './FormInput';
+import { dateToISO, isoToDate, validateDate, validateTime } from '../utils/masks';
 
 export function EditContentModal({ visible, onClose, item, onSaved }) {
   const isEvent = item?.type === 'event';
@@ -25,26 +26,68 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  // Field validation errors
+  const [titleError, setTitleError] = useState('');
+  const [dateError, setDateError] = useState('');
+  const [timeError, setTimeError] = useState('');
+
   useEffect(() => {
     if (!item) return;
     setTitle(item.title || '');
     setContent(item.content || item.description || '');
-    setEventDate(item.event_date ? String(item.event_date).slice(0, 10) : '');
+    setEventDate(item.event_date ? isoToDate(item.event_date) : '');
     setEventTime(item.event_time ? String(item.event_time).slice(0, 5) : '');
     setLocation(item.location || '');
     setError('');
+    setTitleError('');
+    setDateError('');
+    setTimeError('');
   }, [item]);
 
   async function handleSave() {
-    if (!title.trim()) return setError('Título é obrigatório.');
-    setBusy(true);
     setError('');
+    let hasError = false;
+
+    if (!title.trim()) {
+      setTitleError('Título é obrigatório.');
+      hasError = true;
+    } else {
+      setTitleError('');
+    }
+
+    if (isEvent) {
+      if (eventDate.trim()) {
+        const dVal = validateDate(eventDate);
+        if (!dVal.valid) {
+          setDateError(dVal.error);
+          hasError = true;
+        } else {
+          setDateError('');
+        }
+      }
+
+      if (eventTime.trim()) {
+        const tVal = validateTime(eventTime);
+        if (!tVal.valid) {
+          setTimeError(tVal.error);
+          hasError = true;
+        } else {
+          setTimeError('');
+        }
+      }
+    }
+
+    if (hasError) {
+      return setError('Verifique os campos destacados em vermelho.');
+    }
+
+    setBusy(true);
     try {
       if (isEvent) {
         await updateEvent(item.id, {
           title: title.trim(),
           description: content.trim(),
-          eventDate: eventDate.trim() || undefined,
+          eventDate: eventDate.trim() ? dateToISO(eventDate) : undefined,
           eventTime: eventTime.trim() || undefined,
           location: location.trim() || undefined,
         });
@@ -82,68 +125,92 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
-            <View>
-              <Text style={styles.label}>Título</Text>
-              <TextInput
-                style={styles.input}
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Título"
-                placeholderTextColor={colors.textSubtle}
-              />
-            </View>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <FormInput
+              label="Título"
+              required
+              value={title}
+              onChangeText={(val) => {
+                setTitle(val);
+                if (titleError && val.trim()) setTitleError('');
+              }}
+              placeholder="Título"
+              error={titleError}
+            />
 
-            <View>
-              <Text style={styles.label}>{isEvent ? 'Descrição' : 'Conteúdo'}</Text>
-              <TextInput
-                style={[styles.input, { minHeight: 90, textAlignVertical: 'top' }]}
-                value={content}
-                onChangeText={setContent}
-                multiline
-                placeholder="Detalhes"
-                placeholderTextColor={colors.textSubtle}
-              />
-            </View>
+            <FormInput
+              label={isEvent ? 'Descrição' : 'Conteúdo'}
+              value={content}
+              onChangeText={setContent}
+              multiline
+              numberOfLines={4}
+              placeholder="Detalhes"
+            />
 
             {isEvent ? (
               <>
-                <View>
-                  <Text style={styles.label}>Data (AAAA-MM-DD ou DD/MM/AAAA)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={eventDate}
-                    onChangeText={setEventDate}
-                    placeholder="2026-09-15"
-                    placeholderTextColor={colors.textSubtle}
-                  />
-                </View>
+                <FormInput
+                  label="Data do Evento"
+                  mask="date"
+                  value={eventDate}
+                  onChangeText={(val) => {
+                    setEventDate(val);
+                    if (dateError) {
+                      const v = validateDate(val);
+                      setDateError(v.valid ? '' : v.error);
+                    }
+                  }}
+                  placeholder="DD/MM/AAAA"
+                  leftIcon="calendar-outline"
+                  error={dateError}
+                  helperText="Formato: DD/MM/AAAA (ex: 25/10/2026)"
+                  onBlur={() => {
+                    if (eventDate) {
+                      const v = validateDate(eventDate);
+                      if (!v.valid) setDateError(v.error);
+                    }
+                  }}
+                />
 
-                <View>
-                  <Text style={styles.label}>Horário (HH:MM)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={eventTime}
-                    onChangeText={setEventTime}
-                    placeholder="19:30"
-                    placeholderTextColor={colors.textSubtle}
-                  />
-                </View>
+                <FormInput
+                  label="Horário"
+                  mask="time"
+                  value={eventTime}
+                  onChangeText={(val) => {
+                    setEventTime(val);
+                    if (timeError) {
+                      const v = validateTime(val);
+                      setTimeError(v.valid ? '' : v.error);
+                    }
+                  }}
+                  placeholder="HH:MM"
+                  leftIcon="clock-outline"
+                  error={timeError}
+                  helperText="Formato: HH:MM (ex: 19:30)"
+                  onBlur={() => {
+                    if (eventTime) {
+                      const v = validateTime(eventTime);
+                      if (!v.valid) setTimeError(v.error);
+                    }
+                  }}
+                />
 
-                <View>
-                  <Text style={styles.label}>Local / Endereço</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={location}
-                    onChangeText={setLocation}
-                    placeholder="Local do evento"
-                    placeholderTextColor={colors.textSubtle}
-                  />
-                </View>
+                <FormInput
+                  label="Local / Endereço"
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="Local do evento ou link"
+                  leftIcon="map-marker-outline"
+                />
               </>
             ) : null}
 
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {error ? (
+              <View style={styles.errorAlert}>
+                <MaterialCommunityIcons name="alert-circle" size={18} color="#d93025" />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
 
             <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={busy}>
               {busy ? (
@@ -188,26 +255,22 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 6,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: colors.background,
+  errorAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fff0f0',
+    padding: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.text,
+    borderColor: '#ffd2d2',
+    marginBottom: 12,
   },
   errorText: {
     fontSize: 12,
-    color: '#e0245e',
+    color: '#d93025',
     fontWeight: '600',
+    flex: 1,
   },
   saveBtn: {
     backgroundColor: colors.primary,
@@ -215,6 +278,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 6,
+    marginBottom: 16,
   },
   saveBtnText: {
     color: '#ffffff',

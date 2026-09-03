@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
 import { colors } from '../styles/colors';
 import { fetchCurrentUser, updateCurrentUser } from '../services/userApi';
+import { FormInput } from '../components/FormInput';
 
 export function EditProfileScreen() {
   const navigation = useNavigation();
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
+  const [city, setCity] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [nameError, setNameError] = useState('');
 
   useEffect(() => {
     let isActive = true;
@@ -27,6 +30,7 @@ export function EditProfileScreen() {
 
         setName(profile.name || '');
         setRole(profile.role || '');
+        setCity(profile.city || '');
       } catch (error) {
         if (isActive) {
           setMessage(error.message);
@@ -46,17 +50,24 @@ export function EditProfileScreen() {
   }, []);
 
   async function handleSave() {
+    if (!name.trim()) {
+      setNameError('Nome é obrigatório.');
+      return;
+    }
+    setNameError('');
+
     setIsSaving(true);
     setMessage('');
 
     try {
       await updateCurrentUser({
-        name,
-        role,
+        name: name.trim(),
+        role: role.trim(),
+        city: city.trim() || undefined,
       });
       navigation.goBack();
     } catch (error) {
-      setMessage(error.message);
+      setMessage(error.message || 'Erro ao salvar perfil.');
     } finally {
       setIsSaving(false);
     }
@@ -82,32 +93,68 @@ export function EditProfileScreen() {
       </View>
 
       <View style={authStyles.card}>
-        <View style={authStyles.field}>
-          <Text style={authStyles.fieldLabel}>Nome</Text>
-          <TextInput
-            style={authStyles.fieldInput}
-            value={name}
-            onChangeText={setName}
-            placeholder="Gabriel Rodrigues"
-            placeholderTextColor="#9a9a9a"
-          />
-        </View>
+        <FormInput
+          label="Nome Completo"
+          required
+          value={name}
+          onChangeText={(val) => {
+            setName(val);
+            if (nameError && val.trim()) setNameError('');
+          }}
+          placeholder="Seu nome completo"
+          leftIcon="account-outline"
+          error={nameError}
+        />
 
-        <View style={authStyles.field}>
-          <Text style={authStyles.fieldLabel}>Bio</Text>
-          <TextInput
-            style={authStyles.fieldInput}
-            value={role}
-            onChangeText={setRole}
-            placeholder="Organizador de Meetups"
-            placeholderTextColor="#9a9a9a"
-          />
-        </View>
+        <FormInput
+          label="Ocupação / Bio"
+          value={role}
+          onChangeText={setRole}
+          placeholder="Ex: Desenvolvedor, Organizador de Meetups"
+          leftIcon="badge-account-horizontal-outline"
+        />
 
-        {message ? <Text style={authStyles.loadingSubtitle}>{message}</Text> : null}
+        <FormInput
+          label="Cidade / Estado"
+          value={city}
+          onChangeText={setCity}
+          placeholder="Ex: São Paulo, SP"
+          leftIcon="map-marker-outline"
+        />
+
+        {message ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: '#fff0f0',
+              padding: 10,
+              borderRadius: 8,
+              marginBottom: 14,
+              borderWidth: 1,
+              borderColor: '#ffd2d2',
+            }}
+          >
+            <MaterialCommunityIcons name="alert-circle" size={18} color="#d93025" />
+            <Text style={{ color: '#d93025', fontSize: 13, fontWeight: '600', flex: 1 }}>{message}</Text>
+          </View>
+        ) : null}
 
         <TouchableOpacity style={authStyles.primaryButton} onPress={handleSave} disabled={isSaving}>
-          <Text style={authStyles.primaryButtonText}>{isSaving ? 'Salvando...' : 'Salvar alterações'}</Text>
+          {isSaving ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <Text style={authStyles.primaryButtonText}>Salvar alterações</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[authStyles.secondaryButton, { marginTop: 10 }]}
+          onPress={() => navigation.goBack()}
+          disabled={isSaving}
+        >
+          <Text style={authStyles.secondaryButtonText}>Cancelar e Voltar</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

@@ -241,10 +241,11 @@ export function makeRepository(db) {
     async listPosts(limit = 50) {
       const rows = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
         u.id author_id, u.name author_name, u.avatar author_avatar,
-        (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
+        COALESCE(c.comments_count, 0)::int AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
         FROM posts p
         JOIN users u ON u.id=p.author_id
+        LEFT JOIN (SELECT post_id, count(*)::int AS comments_count FROM post_comments GROUP BY post_id) c ON c.post_id=p.id
         LEFT JOIN events e ON e.id=p.mentioned_event_id
         ORDER BY p.created_at DESC LIMIT $1`, [limit]);
 
@@ -294,10 +295,11 @@ export function makeRepository(db) {
 
       const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
         u.id author_id, u.name author_name, u.avatar author_avatar,
-        (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
+        COALESCE(c.comments_count, 0)::int AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
         FROM posts p
         JOIN users u ON u.id=p.author_id
+        LEFT JOIN (SELECT post_id, count(*)::int AS comments_count FROM post_comments GROUP BY post_id) c ON c.post_id=p.id
         LEFT JOIN events e ON e.id=p.mentioned_event_id
         ORDER BY p.created_at DESC LIMIT $1`, [limit]);
 
@@ -352,8 +354,9 @@ export function makeRepository(db) {
           'event'::varchar AS type,''::varchar AS presentation_id,
           u.id author_id, u.name author_name, u.avatar author_avatar,
           e.event_date,e.event_time,e.location,
-          (SELECT count(*)::int FROM post_comments c WHERE c.event_id=e.id) AS comments_count
+          COALESCE(c.comments_count, 0)::int AS comments_count
         FROM events e JOIN users u ON u.id=e.author_id
+        LEFT JOIN (SELECT event_id, count(*)::int AS comments_count FROM post_comments GROUP BY event_id) c ON c.event_id=e.id
         ORDER BY e.created_at DESC LIMIT $1`, [limit]),
         many(`SELECT event_id, count(*)::int AS count FROM event_participants GROUP BY event_id`),
       ]);
@@ -435,10 +438,11 @@ export function makeRepository(db) {
     async getPostById(id) {
       const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.mentioned_event_id,
         u.id author_id, u.name author_name, u.avatar author_avatar,
-        (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
+        COALESCE(c.comments_count, 0)::int AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
         FROM posts p
         JOIN users u ON u.id=p.author_id
+        LEFT JOIN (SELECT post_id, count(*)::int AS comments_count FROM post_comments GROUP BY post_id) c ON c.post_id=p.id
         LEFT JOIN events e ON e.id=p.mentioned_event_id
         WHERE p.id=$1`, [id]);
       if (!p) return null;
@@ -765,9 +769,12 @@ export function makeRepository(db) {
     async listEvents(userId) {
       return many(`SELECT e.id,e.title,e.description,e.image,e.event_date,e.event_time,e.location,e.created_at,
         u.id author_id,u.name author_name,u.avatar author_avatar,
-        (SELECT count(*)::int FROM event_participants ep WHERE ep.event_id=e.id) AS participants_count,
-        (SELECT count(*)::int FROM post_comments c WHERE c.event_id=e.id) AS comments_count
-        FROM events e JOIN users u ON u.id=e.author_id
+        COALESCE(ep.participants_count, 0)::int AS participants_count,
+        COALESCE(c.comments_count, 0)::int AS comments_count
+        FROM events e
+        JOIN users u ON u.id=e.author_id
+        LEFT JOIN (SELECT event_id, count(*)::int AS participants_count FROM event_participants GROUP BY event_id) ep ON ep.event_id=e.id
+        LEFT JOIN (SELECT event_id, count(*)::int AS comments_count FROM post_comments GROUP BY event_id) c ON c.event_id=e.id
         WHERE e.author_id=$1 ORDER BY COALESCE(e.event_date,e.created_at::date) DESC,e.created_at DESC`, [userId]);
     },
 

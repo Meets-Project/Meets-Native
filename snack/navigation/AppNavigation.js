@@ -5,6 +5,7 @@ import { NavigationContainer, createNavigationContainerRef } from '@react-naviga
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BottomNav } from '../components/BottomNav';
 import { MenuDrawer } from '../components/MenuDrawer';
 import { NotificationsDrawer } from '../components/NotificationsDrawer';
 import { LoadingScreen } from '../screens/LoadingScreen';
@@ -125,8 +126,22 @@ export default function AppNavigation() {
   };
 
   const authRoutes = new Set(['Loading', 'Login', 'Signup']);
+  const tabRoutes = new Set(['home', 'search', 'create', 'chat', 'profile']);
   const showChrome = !authRoutes.has(currentRouteName);
+  const isSecondaryScreen = showChrome && !tabRoutes.has(currentRouteName);
   const headerTitle = showChrome ? getTitleForRoute(currentRouteName) : '';
+
+  const handleBack = () => {
+    try {
+      if (navigationRef.isReady() && navigationRef.canGoBack()) {
+        navigationRef.goBack();
+      } else {
+        navigationRef.navigate('MainTabs', { screen: 'home' });
+      }
+    } catch (e) {
+      navigationRef.navigate('MainTabs', { screen: 'home' });
+    }
+  };
 
   return (
     <NavigationContainer
@@ -138,6 +153,8 @@ export default function AppNavigation() {
         {showChrome ? (
           <ScreenHeader
             title={headerTitle}
+            canGoBack={isSecondaryScreen}
+            onBackPress={handleBack}
             onMenuPress={() => setIsMenuOpen(true)}
             onLogoPress={() => {
               navigationRef.navigate('MainTabs', { screen: 'home' });
@@ -200,6 +217,18 @@ export default function AppNavigation() {
               onClose={() => setIsNotificationsOpen(false)}
             />
           </>
+        ) : null}
+
+        {isSecondaryScreen ? (
+          <BottomNav
+            activeTab={currentRouteName}
+            onSelectTab={(id) => {
+              try {
+                if (!navigationRef.isReady()) return;
+                navigationRef.navigate('MainTabs', { screen: id });
+              } catch (e) {}
+            }}
+          />
         ) : null}
       </View>
     </NavigationContainer>

@@ -23,7 +23,7 @@ function testDb() {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
       content text NOT NULL, image text, likes integer NOT NULL DEFAULT 0,
       title varchar(160) NOT NULL DEFAULT '', type varchar(30) NOT NULL DEFAULT 'default',
-      presentation_id varchar(160), created_at timestamptz NOT NULL DEFAULT now()
+      presentation_id varchar(160), mentioned_event_id uuid, created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE post_likes (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
     CREATE TABLE favorites (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
@@ -58,6 +58,14 @@ function testDb() {
     CREATE TABLE user_connections (
       user_id uuid NOT NULL REFERENCES users(id), connected_user_id uuid NOT NULL REFERENCES users(id),
       created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id, connected_user_id)
+    );
+    CREATE TABLE post_comments (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      post_id uuid REFERENCES posts(id) ON DELETE CASCADE,
+      event_id uuid REFERENCES events(id) ON DELETE CASCADE,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
     );
   `);
   const { Pool } = mem.adapters.createPg();
