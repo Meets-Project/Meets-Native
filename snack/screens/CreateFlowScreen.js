@@ -5,9 +5,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
 import { colors } from '../styles/colors';
-import { createContent, clearToken, getMyEvents, getFeed } from '../services/api';
+import { createContent, clearToken, getMe, getMyEvents, getFeed } from '../services/api';
 import { FormInput } from '../components/FormInput';
-import { dateToISO, formatLocalDate, validateDate, validateTime } from '../utils/masks';
+import { dateToISO, formatLocalDate, isDateBeforeToday, validateDate, validateTime } from '../utils/masks';
 
 const copy = {
   event: {
@@ -48,6 +48,11 @@ export function CreateFlowScreen() {
   const [eventTime, setEventTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
   const [location, setLocation] = useState('');
+  const [cep, setCep] = useState('');
+  const [addressNumber, setAddressNumber] = useState('');
+  const [venueAddress, setVenueAddress] = useState(null);
+  const [userState, setUserState] = useState('');
+  const [cepLoading, setCepLoading] = useState(false);
   const [image, setImage] = useState(route.params?.editedImage || '');
   const [mentionedEventId, setMentionedEventId] = useState('');
   const [availableEvents, setAvailableEvents] = useState([]);
@@ -73,6 +78,33 @@ export function CreateFlowScreen() {
       setMessage('Imagem editada aplicada.');
     }
   }, [route.params?.editedImage]);
+
+  useEffect(() => {
+    if (mode !== 'event' && mode !== 'presentation') return;
+    getMe().then((user) => {
+      const match = String(user?.city || '').match(/-\s*([A-Za-z]{2})\s*$/);
+      if (match) setUserState(match[1].toUpperCase());
+    }).catch(() => {});
+  }, [mode]);
+
+  async function lookupCep(value) {
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    setCep(digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits);
+    setVenueAddress(null);
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await response.json();
+      if (data.erro || !data.uf || !data.logradouro) throw new Error('CEP não encontrado.');
+      setVenueAddress(data);
+      setLocationError('');
+    } catch (error) {
+      setLocationError(error.message || 'Não foi possível consultar o CEP.');
+    } finally {
+      setCepLoading(false);
+    }
+  }
 
   // Load available events for mention
   useEffect(() => {
@@ -130,6 +162,9 @@ export function CreateFlowScreen() {
         if (!dVal.valid) {
           setDateError(dVal.error);
           hasValidationError = true;
+        } else if (isDateBeforeToday(eventDate)) {
+          setDateError('A data do evento não pode ser anterior a hoje.');
+          hasValidationError = true;
         } else {
           setDateError('');
         }
@@ -161,8 +196,14 @@ export function CreateFlowScreen() {
         }
       }
 
-      if (!location.trim()) {
-        setLocationError('Local ou link da reunião é obrigatório.');
+      if (!cep.trim() || !venueAddress) {
+        setLocationError('Informe um CEP válido para encontrar o endereço.');
+        hasValidationError = true;
+      } else if (!addressNumber.trim()) {
+        setLocationError('O número do endereço é obrigatório.');
+        hasValidationError = true;
+      } else if (userState && venueAddress.uf !== userState) {
+        setLocationError(`O local precisa estar no mesmo estado do seu perfil (${userState}).`);
         hasValidationError = true;
       } else {
         setLocationError('');
@@ -184,7 +225,10 @@ export function CreateFlowScreen() {
         eventDate: eventDate.trim() ? dateToISO(eventDate) : undefined,
         eventTime: eventTime.trim() || undefined,
         eventEndTime: eventEndTime.trim() || undefined,
-        location: location.trim() || undefined,
+        location: venueAddress ? `${venueAddress.logradouro}, ${addressNumber.trim()} - ${venueAddress.bairro}, ${venueAddress.localidade} - ${venueAddress.uf}` : undefined,
+        venueCep: cep.replace(/\D/g, '') || undefined,
+        venueState: venueAddress?.uf || undefined,
+        addressNumber: addressNumber.trim() || undefined,
         mentionedEventId: mentionedEventId || undefined,
       });
 
@@ -216,6 +260,31 @@ export function CreateFlowScreen() {
       </View>
 
       <View style={authStyles.card}>
+        {mode === 'event' || mode === 'presentation' ? (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={authStyles.fieldLabel}>Imagem</Text>
+            {image ? (
+              <View style={{ borderRadius: 12, overflow: 'hidden', backgroundColor: '#111' }}>
+                <Image source={{ uri: image }} style={{ width: '100%', height: 220, resizeMode: 'contain' }} />
+              </View>
+            ) : (
+              <View style={{ height: 140, borderRadius: 12, borderWidth: 1, borderColor: '#ddd', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fafafa' }}>
+                <MaterialCommunityIcons name="image-plus" size={38} color={colors.textMuted} />
+                <Text style={{ marginTop: 8, color: colors.textMuted, fontSize: 13 }}>Nenhuma imagem selecionada</Text>
+              </View>
+            )}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              <TouchableOpacity style={[authStyles.secondaryButton, { flexGrow: 1, flexBasis: 140 }]} onPress={chooseImage}>
+                <MaterialCommunityIcons name="image-plus" size={20} color={colors.primary} />
+                <Text style={authStyles.secondaryButtonText}>Escolher imagem</Text>
+              </TouchableOpacity>
+              {image ? <TouchableOpacity style={[authStyles.secondaryButton, { flexGrow: 1, flexBasis: 140 }]} onPress={editImage}>
+                <MaterialCommunityIcons name="image-edit" size={20} color={colors.primary} />
+                <Text style={authStyles.secondaryButtonText}>Editar imagem</Text>
+              </TouchableOpacity> : null}
+            </View>
+          </View>
+        ) : null}
         <FormInput
           label="Título"
           required
@@ -300,17 +369,30 @@ export function CreateFlowScreen() {
             />
 
             <FormInput
-              label="Local / Endereço"
+              label="CEP do local"
               required
-              value={location}
-              onChangeText={(val) => {
-                setLocation(val);
-                if (locationError && val.trim()) setLocationError('');
-              }}
-              placeholder="Ex: Av. Paulista, 1000 ou link do Google Meet"
+              value={cep}
+              onChangeText={lookupCep}
+              placeholder="00000-000"
+              keyboardType="numeric"
               leftIcon="map-marker-outline"
               error={locationError}
             />
+            <FormInput
+              label="Número"
+              required
+              value={addressNumber}
+              onChangeText={setAddressNumber}
+              placeholder="Número do local"
+              keyboardType="numeric"
+              leftIcon="numeric"
+              error={locationError}
+            />
+            <View style={{ marginBottom: 12, padding: 12, borderRadius: 10, backgroundColor: colors.surfaceSoft }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>{cepLoading ? 'Consultando ViaCEP...' : venueAddress ? 'Endereço do local' : 'Digite um CEP para localizar o endereço'}</Text>
+              {venueAddress ? <Text style={{ color: colors.textMuted, marginTop: 4 }}>{venueAddress.logradouro}, {venueAddress.bairro} - {venueAddress.localidade}/{venueAddress.uf}</Text> : null}
+              {locationError ? <Text style={{ color: '#d93025', marginTop: 4 }}>{locationError}</Text> : null}
+            </View>
           </View>
         ) : null}
 
@@ -406,7 +488,7 @@ export function CreateFlowScreen() {
           </View>
         ) : null}
 
-        <View style={{ marginBottom: 16 }}>
+        {mode === 'post' ? <View style={{ marginBottom: 16 }}>
           <Text style={authStyles.fieldLabel}>Imagem</Text>
           {image ? (
             <View style={{ borderRadius: 12, overflow: 'hidden', backgroundColor: '#111' }}>
@@ -441,7 +523,7 @@ export function CreateFlowScreen() {
               </TouchableOpacity>
             ) : null}
           </View>
-        </View>
+        </View> : null}
 
         {message ? (
           <View

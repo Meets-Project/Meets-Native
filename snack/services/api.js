@@ -46,8 +46,8 @@ export async function login(email, password) {
   return response.data.user;
 }
 
-export async function signup(name, email, password) {
-  const response = await requestJson('/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, password }) });
+export async function signup(name, email, password, avatar) {
+  const response = await requestJson('/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, password, avatar }) });
   await setToken(response.data.token);
   return response.data.user;
 }
@@ -109,6 +109,9 @@ export async function getEventParticipants(id) {
 export async function getHistory() { return (await requestJson('/history')).data; }
 export async function getNotifications() { return (await requestJson('/notifications')).data; }
 export async function markNotificationRead(id) { return (await requestJson(`/notifications/${id}/read`, { method: 'POST' })).data; }
+export async function createEventRating(payload) {
+  return (await requestJson('/ratings/events', { method: 'POST', body: JSON.stringify(payload) })).data;
+}
 export async function getSettings() { return (await requestJson('/settings')).data; }
 export async function updateSettings(payload) { return (await requestJson('/settings', { method: 'PUT', body: JSON.stringify(payload) })).data; }
 export async function toggleLike(id) { return (await requestJson(`/posts/${id}/like`, { method: 'POST' })).data; }

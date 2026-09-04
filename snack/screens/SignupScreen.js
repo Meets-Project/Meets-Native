@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
@@ -14,6 +15,7 @@ export function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [avatar, setAvatar] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -22,6 +24,16 @@ export function SignupScreen() {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  const [avatarError, setAvatarError] = useState('');
+
+  async function chooseAvatar() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8, base64: true });
+    if (!result.canceled && result.assets?.[0]) {
+      const image = result.assets[0];
+      setAvatar(image.base64 ? `data:image/jpeg;base64,${image.base64}` : image.uri);
+      setAvatarError('');
+    }
+  }
 
   const handleNameChange = (val) => {
     setName(val);
@@ -63,6 +75,12 @@ export function SignupScreen() {
   async function handleSignup() {
     setMessage('');
 
+    if (!avatar) {
+      setAvatarError('Adicione uma foto de perfil para continuar.');
+      return;
+    }
+    setAvatarError('');
+
     if (name.trim().length < 2) {
       setNameError('Informe seu nome completo (mínimo 2 caracteres).');
       return;
@@ -92,7 +110,7 @@ export function SignupScreen() {
 
     setBusy(true);
     try {
-      await signup(name.trim(), email.trim(), password);
+      await signup(name.trim(), email.trim(), password, avatar || undefined);
       navigation.replace('MainTabs', { screen: 'profile' });
     } catch (e) {
       setMessage(e.message || 'Erro ao criar conta.');
@@ -112,6 +130,11 @@ export function SignupScreen() {
       </View>
 
       <View style={authStyles.card}>
+        <TouchableOpacity onPress={chooseAvatar} style={{ alignItems: 'center', marginBottom: 4 }}>
+          {avatar ? <Image source={{ uri: avatar }} style={{ width: 88, height: 88, borderRadius: 44 }} /> : <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}><MaterialCommunityIcons name="camera-plus-outline" size={30} color={colors.primary} /></View>}
+          <Text style={{ color: colors.primary, fontWeight: '700', marginTop: 8 }}>{avatar ? 'Trocar foto' : 'Adicionar foto de perfil'}</Text>
+        </TouchableOpacity>
+        {avatarError ? <Text style={{ color: '#d93025', textAlign: 'center', marginBottom: 14 }}>{avatarError}</Text> : null}
         <FormInput
           label="Nome Completo"
           required

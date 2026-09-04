@@ -17,9 +17,9 @@ export function makeRepository(db) {
   });
 
   return {
-    async createUser({ name, email, passwordHash }) {
-      return one(`INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3)
-        RETURNING id,name,email,role,city,avatar,bio,created_at,updated_at`, [name, email, passwordHash]);
+    async createUser({ name, email, passwordHash, avatar }) {
+      return one(`INSERT INTO users(name,email,password_hash,avatar) VALUES($1,$2,$3,$4)
+        RETURNING id,name,email,role,city,avatar,bio,created_at,updated_at`, [name, email, passwordHash, avatar || null]);
     },
 
     async findUserByEmail(email) {
@@ -629,6 +629,20 @@ export function makeRepository(db) {
     async createNotification(userId, { title, body }) {
       return one(`INSERT INTO notifications(user_id,title,body)
         VALUES($1,$2,$3) RETURNING id,title,body,read_at,created_at`, [userId, title, body || '']);
+    },
+
+    async createEventRating(userId, { eventId, stars, comment }) {
+      const event = await one(`SELECT id FROM events WHERE id=$1 AND event_date + event_end_time <= NOW()`, [eventId]);
+      if (!event) {
+        const error = new Error('Evento não encontrado ou ainda não terminou.');
+        error.code = 'FORBIDDEN';
+        throw error;
+      }
+      return one(`INSERT INTO event_ratings(event_id,rater_id,stars,comment)
+        VALUES($1,$2,$3,$4)
+        ON CONFLICT(event_id,rater_id) DO UPDATE SET stars=EXCLUDED.stars,comment=EXCLUDED.comment,updated_at=NOW()
+        RETURNING id,event_id,rater_id,stars,comment,created_at,updated_at`,
+        [eventId, userId, stars, comment || '']);
     },
 
     async listNotifications(userId) {

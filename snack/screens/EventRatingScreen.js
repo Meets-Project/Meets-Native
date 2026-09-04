@@ -1,22 +1,36 @@
 import React, { useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { useRoute } from '@react-navigation/native';
 import { screenStyles } from '../styles/screenStyles';
 import { colors } from '../styles/colors';
 import { AnimatedPressable } from '../components/AnimatedPressable';
+import { createEventRating } from '../services/api';
 
 export function EventRatingScreen() {
+  const route = useRoute();
+  const eventId = route.params?.eventId;
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (rating < 1 || rating > 5) {
       Alert.alert('Avaliação inválida', 'Escolha uma nota entre 1 e 5 estrelas.');
       return;
     }
 
-    Alert.alert('Avaliação enviada', `Você avaliou este evento com ${rating} estrela(s).`);
-    setComment('');
-    setRating(0);
+    if (!eventId) return Alert.alert('Evento não encontrado', 'Abra a avaliação pela notificação do evento.');
+    setBusy(true);
+    try {
+      await createEventRating({ eventId, stars: rating, comment });
+      Alert.alert('Avaliação enviada', `Você avaliou este evento com ${rating} estrela(s).`);
+      setComment('');
+      setRating(0);
+    } catch (error) {
+      Alert.alert('Não foi possível avaliar', error?.message || 'Tente novamente.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -72,6 +86,7 @@ export function EventRatingScreen() {
             alignItems: 'center',
           }}
           onPress={handleSubmit}
+          disabled={busy}
         >
           <Text style={{ color: '#ffffff', fontWeight: '800' }}>Enviar avaliação</Text>
         </AnimatedPressable>

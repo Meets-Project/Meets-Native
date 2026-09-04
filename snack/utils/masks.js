@@ -114,6 +114,15 @@ export function validateDate(dateStr = '') {
   return { valid: false, error: 'Data incompleta. Use o formato DD/MM/AAAA.' };
 }
 
+export function isDateBeforeToday(dateStr = '') {
+  const match = dateStr.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return false;
+  const candidate = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return candidate < today;
+}
+
 /**
  * Valida horário no formato HH:MM
  * @param {string} timeStr

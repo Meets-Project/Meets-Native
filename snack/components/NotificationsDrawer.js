@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { notificationsDrawerStyles } from '../styles/notificationsDrawerStyles';
 import { colors } from '../styles/colors';
+import { markNotificationRead } from '../services/api';
 
 export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
   const navigation = useNavigation();
@@ -11,7 +12,7 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
   const useNativeDriver = Platform.OS !== 'web';
-  const items = notifications.map(n => ({...n, message: n.body ? `${n.title}: ${n.body}` : n.title, timestamp: new Date(n.created_at).toLocaleString('pt-BR'), unread: !n.read_at, type: 'profile', icon: 'bell-outline'}));
+  const items = notifications.map(n => ({...n, message: n.body ? `${n.title}: ${n.body}` : n.title, timestamp: new Date(n.created_at).toLocaleString('pt-BR'), unread: !n.read_at, type: n.type || 'profile', icon: 'bell-outline'}));
 
   useEffect(() => {
     if (isOpen) {
@@ -52,6 +53,7 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
   const handleNotificationPress = (notificationId) => {
     const item = items.find((notification) => notification.id === notificationId);
     if (!item) return;
+    if (item.unread) markNotificationRead(item.id).catch(() => {});
 
     if (item.body?.startsWith('rating-presentation:')) {
       const [postId, presentationId] = item.body.replace('rating-presentation:', '').split(':');
@@ -61,6 +63,13 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
         presentationId,
         presentationTitle: 'Avaliação de apresentação',
       });
+      return;
+    }
+
+    if (item.body?.startsWith('rating-event:')) {
+      const eventId = item.body.replace('rating-event:', '').split(':')[0];
+      onClose();
+      navigation.navigate('EventRating', { eventId });
       return;
     }
 

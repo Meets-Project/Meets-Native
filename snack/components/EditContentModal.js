@@ -23,6 +23,10 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
   const [location, setLocation] = useState('');
+  const [cep, setCep] = useState('');
+  const [addressNumber, setAddressNumber] = useState('');
+  const [venueAddress, setVenueAddress] = useState(null);
+  const [cepLoading, setCepLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,11 +42,34 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
     setEventDate(item.event_date ? isoToDate(item.event_date) : '');
     setEventTime(item.event_time ? String(item.event_time).slice(0, 5) : '');
     setLocation(item.location || '');
+    setCep('');
+    setAddressNumber('');
+    setVenueAddress(null);
     setError('');
     setTitleError('');
     setDateError('');
     setTimeError('');
   }, [item]);
+
+  async function lookupCep(value) {
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    setCep(digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits);
+    if (digits.length !== 8) {
+      setVenueAddress(null);
+      return;
+    }
+    setCepLoading(true);
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await response.json();
+      if (data.erro || !data.logradouro) throw new Error('CEP não encontrado.');
+      setVenueAddress(data);
+    } catch (e) {
+      setError(e.message || 'Não foi possível consultar o CEP.');
+    } finally {
+      setCepLoading(false);
+    }
+  }
 
   async function handleSave() {
     setError('');
@@ -75,6 +102,11 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
           setTimeError('');
         }
       }
+
+      if (cep.trim() && (!venueAddress || !addressNumber.trim())) {
+        setError('Informe um CEP válido e o número do endereço.');
+        hasError = true;
+      }
     }
 
     if (hasError) {
@@ -89,7 +121,7 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
           description: content.trim(),
           eventDate: eventDate.trim() ? dateToISO(eventDate) : undefined,
           eventTime: eventTime.trim() || undefined,
-          location: location.trim() || undefined,
+          location: venueAddress ? `${venueAddress.logradouro}, ${addressNumber.trim()} - ${venueAddress.bairro}, ${venueAddress.localidade} - ${venueAddress.uf}` : location.trim() || undefined,
         });
       } else {
         await updatePost(item.id, {
@@ -195,13 +227,12 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
                   }}
                 />
 
-                <FormInput
-                  label="Local / Endereço"
-                  value={location}
-                  onChangeText={setLocation}
-                  placeholder="Local do evento ou link"
-                  leftIcon="map-marker-outline"
-                />
+                <FormInput label="CEP do local" value={cep} onChangeText={lookupCep} placeholder="00000-000" keyboardType="numeric" leftIcon="map-marker-outline" />
+                <FormInput label="Número" value={addressNumber} onChangeText={setAddressNumber} placeholder="Número do local" keyboardType="numeric" leftIcon="numeric" />
+                <View style={{ marginBottom: 12, padding: 12, borderRadius: 10, backgroundColor: colors.surfaceSoft }}>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>{cepLoading ? 'Consultando ViaCEP...' : venueAddress ? 'Endereço do local' : 'Informe o CEP para alterar o endereço'}</Text>
+                  {venueAddress ? <Text style={{ color: colors.textMuted, marginTop: 4 }}>{venueAddress.logradouro}, {venueAddress.bairro} - {venueAddress.localidade}/{venueAddress.uf}</Text> : null}
+                </View>
               </>
             ) : null}
 

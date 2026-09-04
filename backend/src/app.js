@@ -18,6 +18,7 @@ const credentials = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   email: z.string().trim().email().max(255),
   password: z.string().min(6).max(128),
+  avatar: z.string().max(5_000_000).optional(),
 });
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
@@ -56,6 +57,41 @@ function normalizeTime(input) {
   return undefined;
 }
 
+function validateEventSchedule(data, { required = false } = {}) {
+  const fields = [data.eventDate, data.eventTime, data.eventEndTime, data.location];
+  if (required && fields.some((value) => !String(value || '').trim())) {
+    const error = new Error('Data, horários e local são obrigatórios.');
+    error.code = 'INVALID_SCHEDULE';
+    throw error;
+  }
+  if (!data.eventDate && !data.eventTime && !data.eventEndTime) return;
+  const dateParts = String(data.eventDate || '').split('-').map(Number);
+  const date = new Date(`${data.eventDate}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const validCalendarDate = dateParts.length === 3 && date.getFullYear() === dateParts[0] && date.getMonth() + 1 === dateParts[1] && date.getDate() === dateParts[2];
+  if (!validCalendarDate || date < today) {
+    const error = new Error('A data do evento não pode ser anterior a hoje.');
+    error.code = 'INVALID_SCHEDULE';
+    throw error;
+  }
+  if (data.eventTime && data.eventEndTime && data.eventTime >= data.eventEndTime) {
+    const error = new Error('O horário de fim deve ser depois do início.');
+    error.code = 'INVALID_SCHEDULE';
+    throw error;
+  }
+}
+
+function validateVenueState(user, data) {
+  if (!data.venueState) return;
+  const userState = String(user?.city || '').match(/-\s*([A-Za-z]{2})\s*$/)?.[1]?.toUpperCase();
+  if (userState && data.venueState !== userState) {
+    const error = new Error(`O local precisa estar no mesmo estado do seu perfil (${userState}).`);
+    error.code = 'INVALID_VENUE_STATE';
+    throw error;
+  }
+}
+
 app.get('/health', async (_req, res) => {
   try { await query('SELECT 1'); res.json({ ok: true, database: 'postgresql' }); }
   catch { res.status(503).json({ ok: false, database: 'postgresql' }); }
@@ -65,10 +101,11 @@ app.post('/auth/signup', async (req, res, next) => {
   try {
     const data = credentials.parse(req.body);
     if (!data.name) return res.status(400).json({ message: 'Nome é obrigatório.' });
+    if (!data.avatar) return res.status(400).json({ message: 'Foto de perfil é obrigatória.' });
     const exists = await repo.findUserByEmail(data.email);
     if (exists) return res.status(409).json({ message: 'E-mail já cadastrado.' });
     const passwordHash = await bcrypt.hash(data.password, 12);
-    const user = await repo.createUser({ name: data.name, email: data.email.toLowerCase(), passwordHash });
+    const user = await repo.createUser({ name: data.name, email: data.email.toLowerCase(), passwordHash, avatar: data.avatar });
     await repo.updateSettings(user.id, {});
     await repo.createNotification(user.id, {
       title: 'Bem-vindo ao Meets',
@@ -322,6 +359,9 @@ app.post('/content', requireAuth, async (req, res, next) => {
       eventTime: z.string().optional(),
       eventEndTime: z.string().optional(),
       location: z.string().max(255).optional(),
+      venueCep: z.string().regex(/^\d{8}$/).optional(),
+      venueState: z.string().length(2).optional(),
+      addressNumber: z.string().trim().max(20).optional(),
       presentationId: z.string().trim().max(160).optional(),
       mentionedEventId: z.string().uuid().optional().nullable(),
       speakerIds: z.array(z.string().uuid()).max(20).optional(),
@@ -333,6 +373,11 @@ app.post('/content', requireAuth, async (req, res, next) => {
       eventTime: normalizeTime(raw.eventTime),
       eventEndTime: normalizeTime(raw.eventEndTime),
     };
+
+    if (payload.mode === 'event' || payload.mode === 'presentation') {
+      validateEventSchedule(payload, { required: true });
+      validateVenueState(await repo.getUser(req.auth.sub), payload);
+    }
 
     const item = await repo.createContent(req.auth.sub, payload.mode, payload);
     await repo.addHistory(req.auth.sub, {
@@ -439,6 +484,17 @@ app.post('/ratings/presentations', requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+app.post('/ratings/events', requireAuth, async (req, res, next) => {
+  try {
+    const data = z.object({
+      eventId: z.string().uuid(),
+      stars: z.coerce.number().min(1).max(5),
+      comment: z.string().max(1000).optional(),
+    }).parse(req.body);
+    res.status(201).json({ data: await repo.createEventRating(req.auth.sub, data) });
+  } catch (e) { next(e); }
+});
+
 app.get('/ratings/speakers/:speakerId', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.getSpeakerRatingSummary(req.params.speakerId) }); } catch (e) { next(e); }
 });
@@ -462,6 +518,8 @@ app.use((err, _req, res, _next) => {
   if (err.code === 'SELF_RATING') return res.status(400).json({ message: err.message });
   if (err.code === 'SPEAKER_NOT_LINKED') return res.status(400).json({ message: err.message });
   if (err.code === 'PRESENTATION_REQUIRED') return res.status(400).json({ message: err.message });
+  if (err.code === 'INVALID_SCHEDULE') return res.status(400).json({ message: err.message });
+  if (err.code === 'INVALID_VENUE_STATE') return res.status(400).json({ message: err.message });
   if (err.code === 'FORBIDDEN') return res.status(403).json({ message: err.message });
   if (err.code === '23505') return res.status(409).json({ message: 'Registro duplicado.' });
   if (err.code === '23503') return res.status(404).json({ message: err.message || 'Registro relacionado não encontrado.' });

@@ -19,6 +19,7 @@ import { PresentationRatingScreen } from '../screens/PresentationRatingScreen';
 import { SpeakerProfileScreen } from '../screens/SpeakerProfileScreen';
 import { EventDetailScreen } from '../screens/EventDetailScreen';
 import { EventRatingScreen } from '../screens/EventRatingScreen';
+import { PostDetailScreen } from '../screens/PostDetailScreen';
 import { RankingScreen } from '../screens/RankingScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { HomeScreen } from '../screens/HomeScreen';
@@ -179,6 +180,7 @@ export default function AppNavigation() {
           <Stack.Screen name="SpeakerProfile" component={SpeakerProfileScreen} />
           <Stack.Screen name="EventDetail" component={EventDetailScreen} />
           <Stack.Screen name="EventRating" component={EventRatingScreen} />
+          <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           <Stack.Screen name="Ranking" component={RankingScreen} />
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
 
