@@ -6,6 +6,7 @@
 !/backend/
 !/backend/migrations/
 !/backend/migrations/008_visibility_sharing_notifications_calendar.sql
+backend/node_modules/
 
 # Ignore files inside snack/ that don't work in Expo Snack
 snack/backend/

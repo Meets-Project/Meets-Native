@@ -57,7 +57,7 @@ export function SharedContentScreen() {
   const item = data;
   const isEvent = item.type === 'event';
   const isPresentation = item.type === 'presentation';
-  const participationEventId = isEvent ? item.id : item.mentioned_event_id;
+  const participationEventId = isEvent ? item.id : item.mentioned_event?.id;
 
   async function handleParticipation() {
     if (!participationEventId) return;

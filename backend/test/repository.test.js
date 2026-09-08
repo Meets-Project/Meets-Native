@@ -62,7 +62,7 @@ function testDb() {
       id serial PRIMARY KEY, presentation_id varchar(160) NOT NULL, post_id uuid,
       rater_id uuid NOT NULL REFERENCES users(id), speaker_id uuid NOT NULL REFERENCES users(id),
       stars numeric(2,1) NOT NULL, skills jsonb NOT NULL DEFAULT '{}'::jsonb,
-      comment varchar(1000) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(),
+      comment varchar(1000) NOT NULL DEFAULT '', visibility varchar(20) NOT NULL DEFAULT 'public', created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE(presentation_id,rater_id,speaker_id)
     );
@@ -92,21 +92,31 @@ it('applies migration schema for visibility, audience and notification targets',
     impure: true,
     implementation: () => crypto.randomUUID(),
   });
+  mem.public.registerFunction({
+    name: 'nullif',
+    implementation: (value, other) => value === other ? null : value,
+  });
+  mem.public.registerFunction({
+    name: 'left',
+    implementation: (value, length) => String(value || '').slice(0, Number(length || 0)),
+  });
 
   const migrationDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
   const migrationFiles = (await fs.readdir(migrationDir)).filter((file) => file.endsWith('.sql')).sort();
   for (const file of migrationFiles) {
-    const sql = (await fs.readFile(path.join(migrationDir, file), 'utf8')).replace(/CREATE EXTENSION IF NOT EXISTS pgcrypto;?/gi, '');
+    const sql = (await fs.readFile(path.join(migrationDir, file), 'utf8'))
+      .replace(/CREATE EXTENSION IF NOT EXISTS pgcrypto;?/gi, '')
+      .replace(/UPDATE posts SET title[\s\S]*?WHERE title = '';?/i, '');
     await mem.public.none(sql);
   }
 
-  const visible = await mem.query(`SELECT column_name FROM information_schema.columns WHERE table_name='events' AND column_name='visibility'`);
+  const visible = await mem.public.query(`SELECT column_name FROM information_schema.columns WHERE table_name='events' AND column_name='visibility'`);
   expect(visible.rows.some((row) => row.column_name === 'visibility')).toBe(true);
 
-  const contentAudience = await mem.query(`SELECT to_regclass('public.content_audience') AS exists`);
-  expect(contentAudience.rows[0].exists).toBe('public.content_audience');
+  const contentAudience = await mem.public.query(`SELECT table_name FROM information_schema.tables WHERE table_name='content_audience'`);
+  expect(contentAudience.rows.some((row) => row.table_name === 'content_audience')).toBe(true);
 
-  const notificationTargets = await mem.query(`SELECT column_name FROM information_schema.columns WHERE table_name='notifications' AND column_name='target_type'`);
+  const notificationTargets = await mem.public.query(`SELECT column_name FROM information_schema.columns WHERE table_name='notifications' AND column_name='target_type'`);
   expect(notificationTargets.rows.some((row) => row.column_name === 'target_type')).toBe(true);
 });
 

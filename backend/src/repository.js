@@ -1271,7 +1271,10 @@ export function makeRepository(db) {
       if (type === 'event') return this.getEventById(id, viewerId, shareToken);
       const post = await this.getPostById(id);
       if (!post) return null;
-      return { ...post, type: type === 'presentation' ? 'presentation' : post.type };
+      const isParticipating = viewerId && post.mentioned_event?.id
+        ? Boolean(await one(`SELECT 1 FROM event_participants WHERE event_id=$1 AND user_id=$2`, [post.mentioned_event.id, viewerId]))
+        : false;
+      return { ...post, type: type === 'presentation' ? 'presentation' : post.type, is_participating: isParticipating };
     },
 
     async deleteOwnPost(userId, postId) {
