@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
@@ -173,6 +173,24 @@ export function PresentationRatingScreen() {
         },
       };
     });
+  }
+
+  function handleSelectPresentation(item) {
+    const nextSpeakers = Array.isArray(item.speakers) ? item.speakers : [];
+    setSelectedPostId(item.postId || '');
+    setSelectedPresId(item.presentationId || '');
+    setSelectedTitle(item.title || 'Apresentação');
+    setRawSpeakers(nextSpeakers);
+    setSelectedSpeakerId(nextSpeakers[0]?.id || '');
+    setSkillScoresBySpeaker((current) => {
+      const next = { ...current };
+      nextSpeakers.forEach((speaker) => {
+        if (!next[speaker.id]) next[speaker.id] = buildInitialSkillScores();
+      });
+      return next;
+    });
+    setFeedback('');
+    setIsSuccess(false);
   }
 
   async function handleSubmit() {
