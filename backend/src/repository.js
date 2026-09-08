@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 export function makeRepository(db) {
   const one = async (sql, params = []) => (await db.query(sql, params)).rows[0] || null;
   const many = async (sql, params = []) => (await db.query(sql, params)).rows;
@@ -16,10 +17,65 @@ export function makeRepository(db) {
     visuals: Math.max(0, Math.min(99, Number(skills.visuals ?? 70))),
   });
 
+  const VALID_VISIBILITY = new Set(['public', 'followers', 'selected', 'link']);
+  const normalizeVisibility = (value) => VALID_VISIBILITY.has(value) ? value : 'public';
+
+  const getAllowedAudience = async (authorId, audienceUserIds = []) => {
+    const ids = [...new Set((audienceUserIds || []).filter(Boolean).filter((id) => id !== authorId))];
+    if (!ids.length) {
+      const error = new Error('Selecione pelo menos um seguidor para o conteúdo privado.');
+      error.code = 'AUDIENCE_REQUIRED';
+      throw error;
+    }
+    const followers = await many(`SELECT connected_user_id AS id FROM user_connections WHERE user_id=$2 AND connected_user_id = ANY($1)`, [ids, authorId]);
+    const allowed = new Set((followers || []).map((r) => r.id));
+    if (!allowed.size) {
+      const error = new Error('Os destinatários escolhidos precisam seguir você.');
+      error.code = 'AUDIENCE_REQUIRED';
+      throw error;
+    }
+    return [...allowed];
+  };
+
+  const setAudience = async (contentType, contentId, authorId, visibility, audienceUserIds = []) => {
+    if (visibility !== 'selected') return;
+    const ids = await getAllowedAudience(authorId, audienceUserIds);
+    for (const id of ids) {
+      await db.query(`INSERT INTO content_audience(content_type,content_id,user_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, [contentType, String(contentId), id]);
+    }
+  };
+
+  const hasEnded = (dateValue, timeValue) => {
+    if (!dateValue || !timeValue) return false;
+    const date = dateValue instanceof Date ? dateValue.toISOString().slice(0, 10) : String(dateValue).slice(0, 10);
+    const time = String(timeValue).slice(0, 5);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const current = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return `${date} ${time}` <= `${today} ${current}`;
+  };
+
+  const canView = async (contentType, contentId, viewerId = null, shareToken = null) => {
+    const table = contentType === 'event' ? 'events' : 'posts';
+    const row = await one(`SELECT id,author_id,visibility,share_token FROM ${table} WHERE id=$1`, [contentId]);
+    if (!row) return false;
+    if (viewerId && row.author_id === viewerId) return true;
+    if (row.visibility === 'public') return true;
+    if (row.visibility === 'link') return Boolean(shareToken && row.share_token && shareToken === row.share_token);
+    if (!viewerId) return false;
+    if (row.visibility === 'followers') {
+      return Boolean(await one(`SELECT 1 FROM user_connections WHERE user_id=$1 AND connected_user_id=$2`, [viewerId, row.author_id]));
+    }
+    if (row.visibility === 'selected') {
+      return Boolean(await one(`SELECT 1 FROM content_audience WHERE content_type=$1 AND content_id=$2 AND user_id=$3`, [contentType, String(contentId), viewerId]));
+    }
+    return false;
+  };
+
   return {
     async createUser({ name, email, passwordHash, avatar }) {
       return one(`INSERT INTO users(name,email,password_hash,avatar) VALUES($1,$2,$3,$4)
-        RETURNING id,name,email,role,city,avatar,bio,created_at,updated_at`, [name, email, passwordHash, avatar || null]);
+        RETURNING id,name,email,role,city,avatar,bio,created_at,updated_at`, [name, email, passwordHash, avatar || '👤']);
     },
 
     async findUserByEmail(email) {
@@ -56,15 +112,20 @@ export function makeRepository(db) {
         [id, data.name ?? null, data.role ?? null, data.city ?? null, data.addressNumber ?? null, data.avatar ?? null, data.bio ?? null]);
     },
 
-    async search(term) {
+    async search(term, userId = null) {
       const q = `%${term}%`;
-      return many(`SELECT 'user' type,id,name title,role subtitle,avatar FROM users
-        WHERE name ILIKE $1 OR role ILIKE $1
-        UNION ALL
-        SELECT 'post' type,p.id,p.content title,u.name subtitle,u.avatar
-        FROM posts p JOIN users u ON u.id=p.author_id
-        WHERE p.content ILIKE $1
-        ORDER BY title LIMIT 50`, [q]);
+      const [users, posts] = await Promise.all([
+        many(`SELECT 'user'::varchar AS type,id,name AS title,role AS subtitle,avatar
+          FROM users WHERE name ILIKE $1 OR role ILIKE $1 ORDER BY name LIMIT 50`, [q]),
+        many(`SELECT 'post'::varchar AS type,p.id,p.content AS title,u.name AS subtitle,u.avatar,
+            p.author_id,p.visibility
+          FROM posts p JOIN users u ON u.id=p.author_id
+          WHERE p.content ILIKE $1 ORDER BY p.created_at DESC LIMIT 100`, [q]),
+      ]);
+      const connected = new Set((await many(`SELECT connected_user_id FROM user_connections WHERE user_id=$1`, [userId])).map(r => r.connected_user_id));
+      const selected = new Set((await many(`SELECT content_id FROM content_audience WHERE content_type='post' AND user_id=$1`, [userId])).map(r => String(r.content_id)));
+      const visiblePosts = posts.filter((r) => r.visibility === 'public' || r.author_id === userId || (r.visibility === 'followers' && connected.has(r.author_id)) || (r.visibility === 'selected' && selected.has(String(r.id))));
+      return [...users, ...visiblePosts].sort((a, b) => String(a.title).localeCompare(String(b.title))).slice(0, 50);
     },
 
     // --- CHAT SYSTEM ---
@@ -197,7 +258,12 @@ export function makeRepository(db) {
     },
 
     // --- COMMENTS SYSTEM ---
-    async listComments(targetId) {
+    async listComments(targetId, userId = null, contentType = 'post') {
+      if (!(await canView(contentType, targetId, userId))) {
+        const error = new Error('Você não tem permissão para acessar este conteúdo.');
+        error.code = 'FORBIDDEN';
+        throw error;
+      }
       return many(`
         SELECT c.id, c.post_id, c.event_id, c.content, c.created_at,
           u.id AS user_id, u.name AS user_name, u.avatar AS user_avatar, u.role AS user_role
@@ -211,6 +277,13 @@ export function makeRepository(db) {
 
     async createComment(userId, { postId = null, eventId = null, content }) {
       if (!postId && !eventId) throw new Error('Post ou evento não informado.');
+      const contentType = eventId ? 'event' : 'post';
+      const contentId = eventId || postId;
+      if (!(await canView(contentType, contentId, userId))) {
+        const error = new Error('Você não tem permissão para comentar neste conteúdo.');
+        error.code = 'FORBIDDEN';
+        throw error;
+      }
       const user = await one(`SELECT id, name, avatar, role FROM users WHERE id=$1`, [userId]);
       const comment = await one(`
         INSERT INTO post_comments(post_id, event_id, user_id, content)
@@ -277,23 +350,29 @@ export function makeRepository(db) {
       let connectedSet = new Set();
       let savedEventSet = new Set();
       let partEventSet = new Set();
+      let selectedPostSet = new Set();
+      let selectedEventSet = new Set();
 
       if (userId) {
-        const [savedPosts, likedPosts, connections, savedEvents, partEvents] = await Promise.all([
+        const [savedPosts, likedPosts, connections, savedEvents, partEvents, selectedPosts, selectedEvents] = await Promise.all([
           many(`SELECT post_id FROM saved_posts WHERE user_id=$1`, [userId]),
           many(`SELECT post_id FROM post_likes WHERE user_id=$1`, [userId]),
           many(`SELECT connected_user_id FROM user_connections WHERE user_id=$1`, [userId]),
           many(`SELECT event_id FROM saved_events WHERE user_id=$1`, [userId]),
           many(`SELECT event_id FROM event_participants WHERE user_id=$1`, [userId]),
+          many(`SELECT content_id FROM content_audience WHERE content_type='post' AND user_id=$1`, [userId]),
+          many(`SELECT content_id FROM content_audience WHERE content_type='event' AND user_id=$1`, [userId]),
         ]);
         savedPostSet = new Set((savedPosts || []).map(r => r.post_id));
         likedPostSet = new Set((likedPosts || []).map(r => r.post_id));
         connectedSet = new Set((connections || []).map(r => r.connected_user_id));
         savedEventSet = new Set((savedEvents || []).map(r => r.event_id));
         partEventSet = new Set((partEvents || []).map(r => r.event_id));
+        selectedPostSet = new Set((selectedPosts || []).map(r => String(r.content_id)));
+        selectedEventSet = new Set((selectedEvents || []).map(r => String(r.content_id)));
       }
 
-      const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.event_date,p.event_time,p.event_end_time,p.mentioned_event_id,
+      const posts = await many(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.event_date,p.event_time,p.event_end_time,p.mentioned_event_id,p.visibility,p.share_token,
         u.id author_id, u.name author_name, u.avatar author_avatar,
         COALESCE(c.comments_count, 0)::int AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
@@ -312,6 +391,8 @@ export function makeRepository(db) {
         type: p.type,
         title: p.title,
         presentation_id: p.presentation_id,
+        visibility: p.visibility || 'public',
+        share_token: p.share_token,
         event_date: p.event_date,
         event_time: p.event_time,
         event_end_time: p.event_end_time,
@@ -330,6 +411,12 @@ export function makeRepository(db) {
         is_connected: connectedSet.has(p.author_id),
       }));
 
+      formattedPosts = formattedPosts.filter((p) => {
+        if (p.visibility === 'public' || p.author.id === userId) return true;
+        if (p.visibility === 'followers') return connectedSet.has(p.author.id);
+        if (p.visibility === 'selected') return selectedPostSet.has(String(p.id));
+        return false;
+      });
       if (filter === 'connections' && userId) {
         formattedPosts = formattedPosts.filter(p => connectedSet.has(p.author.id));
       }
@@ -356,7 +443,7 @@ export function makeRepository(db) {
         many(`SELECT e.id,e.title,e.description AS content,e.image,e.created_at,
           'event'::varchar AS type,''::varchar AS presentation_id,
           u.id author_id, u.name author_name, u.avatar author_avatar,
-          e.event_date,e.event_time,e.event_end_time,e.location,
+          e.event_date,e.event_time,e.event_end_time,e.location,e.visibility,e.share_token,
           COALESCE(c.comments_count, 0)::int AS comments_count
         FROM events e JOIN users u ON u.id=e.author_id
         LEFT JOIN (SELECT event_id, count(*)::int AS comments_count FROM post_comments GROUP BY event_id) c ON c.event_id=e.id
@@ -383,6 +470,8 @@ export function makeRepository(db) {
         event_time: e.event_time,
         event_end_time: e.event_end_time,
         location: e.location,
+        visibility: e.visibility || 'public',
+        share_token: e.share_token,
         participants_count: partCountMap[e.id] || 0,
         comments_count: Number(e.comments_count || 0),
         is_participating: partEventSet.has(e.id),
@@ -390,6 +479,12 @@ export function makeRepository(db) {
         is_connected: connectedSet.has(e.author_id),
       }));
 
+      formattedEvents = formattedEvents.filter((e) => {
+        if (e.visibility === 'public' || e.author.id === userId) return true;
+        if (e.visibility === 'followers') return connectedSet.has(e.author.id);
+        if (e.visibility === 'selected') return selectedEventSet.has(String(e.id));
+        return false;
+      });
       if (filter === 'connections' && userId) {
         formattedEvents = formattedEvents.filter(e => connectedSet.has(e.author.id));
       }
@@ -397,11 +492,15 @@ export function makeRepository(db) {
       return [...formattedPosts, ...formattedEvents].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit);
     },
 
-    async createPost(userId, { content, image, title = '', type = 'default', presentationId = null, mentionedEventId = null, eventDate = null, eventTime = null, eventEndTime = null }) {
-      return one(`INSERT INTO posts(author_id,content,image,title,type,presentation_id,mentioned_event_id,event_date,event_time,event_end_time)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        RETURNING id,content,image,likes,created_at,type,title,presentation_id,mentioned_event_id,event_date,event_time,event_end_time`,
-        [userId, content, image || null, title || content.slice(0, 160), type, presentationId, mentionedEventId || null, eventDate || null, eventTime || null, eventEndTime || null]);
+    async createPost(userId, { content, image, title = '', type = 'default', presentationId = null, mentionedEventId = null, eventDate = null, eventTime = null, eventEndTime = null, visibility = 'public', audienceUserIds = [] }) {
+      const safeVisibility = normalizeVisibility(visibility);
+      if (safeVisibility === 'selected') await getAllowedAudience(userId, audienceUserIds);
+      const post = await one(`INSERT INTO posts(author_id,content,image,title,type,presentation_id,mentioned_event_id,event_date,event_time,event_end_time,visibility,share_token)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        RETURNING id,content,image,likes,created_at,type,title,presentation_id,mentioned_event_id,event_date,event_time,event_end_time,visibility,share_token`,
+        [userId, content, image || null, title || content.slice(0, 160), type, presentationId, mentionedEventId || null, eventDate || null, eventTime || null, eventEndTime || null, safeVisibility, crypto.randomUUID()]);
+      await setAudience('post', post.id, userId, safeVisibility, audienceUserIds);
+      return post;
     },
 
     async updatePost(userId, postId, data) {
@@ -411,18 +510,21 @@ export function makeRepository(db) {
         err.code = 'FORBIDDEN';
         throw err;
       }
-      return one(`
+      const updated = await one(`
         UPDATE posts SET
           title = COALESCE($3, title),
           content = COALESCE($4, content),
           image = COALESCE($5, image),
-          mentioned_event_id = COALESCE($6, mentioned_event_id)
+          mentioned_event_id = COALESCE($6, mentioned_event_id),
+          visibility = COALESCE($7, visibility)
         WHERE id = $1 AND author_id = $2
-        RETURNING id, title, content, image, mentioned_event_id, type, presentation_id, likes, created_at
-      `, [postId, userId, data.title ?? null, data.content ?? null, data.image ?? null, data.mentionedEventId ?? null]);
+        RETURNING id, title, content, image, mentioned_event_id, type, presentation_id, likes, created_at, visibility, share_token
+      `, [postId, userId, data.title ?? null, data.content ?? null, data.image ?? null, data.mentionedEventId ?? null, data.visibility ?? null]);
+      if (data.visibility === 'selected') await setAudience('post', postId, userId, data.visibility, data.audienceUserIds || []);
+      return updated;
     },
 
-    async createPresentation(userId, { title, description = '', image = null, presentationId, speakerIds = [], eventDate, eventTime, eventEndTime }) {
+    async createPresentation(userId, { title, description = '', image = null, presentationId, speakerIds = [], eventDate, eventTime, eventEndTime, mentionedEventId = null, visibility = 'public', audienceUserIds = [] }) {
       const id = presentationId || `presentation-${crypto.randomUUID()}`;
       const post = await this.createPost(userId, {
         content: description || title,
@@ -433,6 +535,9 @@ export function makeRepository(db) {
         eventDate,
         eventTime,
         eventEndTime,
+        mentionedEventId,
+        visibility,
+        audienceUserIds,
       });
       const ids = [...new Set([userId, ...(speakerIds || [])])];
       for (const speakerId of ids) {
@@ -443,7 +548,7 @@ export function makeRepository(db) {
     },
 
     async getPostById(id) {
-      const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.event_date,p.event_time,p.event_end_time,p.mentioned_event_id,
+      const p = await one(`SELECT p.id,p.content,p.image,p.likes,p.created_at,p.type,p.title,p.presentation_id,p.event_date,p.event_time,p.event_end_time,p.mentioned_event_id,p.visibility,p.share_token,
         u.id author_id, u.name author_name, u.avatar author_avatar,
         COALESCE(c.comments_count, 0)::int AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
@@ -466,6 +571,8 @@ export function makeRepository(db) {
         type: p.type,
         title: p.title,
         presentation_id: p.presentation_id,
+        visibility: p.visibility || 'public',
+        share_token: p.share_token,
         event_date: p.event_date,
         event_time: p.event_time,
         event_end_time: p.event_end_time,
@@ -483,6 +590,7 @@ export function makeRepository(db) {
     },
 
     async toggleLike(userId, postId) {
+      if (!(await canView('post', postId, userId))) { const error = new Error('Você não tem permissão para interagir com esta publicação.'); error.code = 'FORBIDDEN'; throw error; }
       const existing = await one(`SELECT 1 FROM post_likes WHERE user_id=$1 AND post_id=$2`, [userId, postId]);
       if (existing) {
         await db.query(`DELETE FROM post_likes WHERE user_id=$1 AND post_id=$2`, [userId, postId]);
@@ -500,11 +608,13 @@ export function makeRepository(db) {
       // Check if this itemId is an event
       const isEvent = await one(`SELECT id, title FROM events WHERE id=$1`, [itemId]);
       if (isEvent) {
+        if (!(await canView('event', itemId, userId))) { const error = new Error('Você não tem permissão para salvar este evento.'); error.code = 'FORBIDDEN'; throw error; }
         return this.toggleSaveEvent(userId, itemId);
       }
 
       // Otherwise assume post
       const isPost = await one(`SELECT id, title FROM posts WHERE id=$1`, [itemId]);
+      if (isPost && !(await canView('post', itemId, userId))) { const error = new Error('Você não tem permissão para salvar esta publicação.'); error.code = 'FORBIDDEN'; throw error; }
       const existing = await one(`SELECT 1 FROM saved_posts WHERE user_id=$1 AND post_id=$2`, [userId, itemId]);
       if (existing) {
         await db.query(`DELETE FROM saved_posts WHERE user_id=$1 AND post_id=$2`, [userId, itemId]);
@@ -518,6 +628,7 @@ export function makeRepository(db) {
     },
 
     async toggleSaveEvent(userId, eventId) {
+      if (!(await canView('event', eventId, userId))) { const error = new Error('Você não tem permissão para salvar este evento.'); error.code = 'FORBIDDEN'; throw error; }
       const ev = await one(`SELECT id, title FROM events WHERE id=$1`, [eventId]);
       const existing = await one(`SELECT 1 FROM saved_events WHERE user_id=$1 AND event_id=$2`, [userId, eventId]);
       if (existing) {
@@ -556,6 +667,7 @@ export function makeRepository(db) {
     },
 
     async toggleFavorite(userId, postId) {
+      if (!(await canView('post', postId, userId))) { const error = new Error('Você não tem permissão para favoritar esta publicação.'); error.code = 'FORBIDDEN'; throw error; }
       const existing = await one(`SELECT 1 FROM favorites WHERE user_id=$1 AND post_id=$2`, [userId, postId]);
       if (existing) {
         await db.query(`DELETE FROM favorites WHERE user_id=$1 AND post_id=$2`, [userId, postId]);
@@ -575,6 +687,7 @@ export function makeRepository(db) {
 
     // --- EVENT PARTICIPANTS & REUNIONS ---
     async toggleEventParticipation(userId, eventId) {
+      if (!(await canView('event', eventId, userId))) { const error = new Error('Você não tem permissão para participar deste evento.'); error.code = 'FORBIDDEN'; throw error; }
       const ev = await one(`SELECT id, title, author_id FROM events WHERE id=$1`, [eventId]);
       if (!ev) {
         const err = new Error('Evento / reunião não encontrado.');
@@ -609,7 +722,8 @@ export function makeRepository(db) {
       };
     },
 
-    async listEventParticipants(eventId) {
+    async listEventParticipants(eventId, userId = null) {
+      if (!(await canView('event', eventId, userId))) { const error = new Error('Você não tem permissão para acessar os participantes.'); error.code = 'FORBIDDEN'; throw error; }
       return many(`
         SELECT u.id, u.name, u.avatar, u.role, ep.status, ep.created_at
         FROM event_participants ep
@@ -626,15 +740,50 @@ export function makeRepository(db) {
         FROM history WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, [userId]);
     },
 
-    async createNotification(userId, { title, body }) {
-      return one(`INSERT INTO notifications(user_id,title,body)
-        VALUES($1,$2,$3) RETURNING id,title,body,read_at,created_at`, [userId, title, body || '']);
+    async createNotification(userId, { title, body, targetType = null, targetId = null, targetToken = null }) {
+      return one(`INSERT INTO notifications(user_id,title,body,target_type,target_id,target_token)
+        VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING id,title,body,target_type,target_id,target_token,read_at,created_at`,
+        [userId, title, body || '', targetType, targetId ? String(targetId) : null, targetToken || null]);
+    },
+
+    async ensureRatingNotifications(userId) {
+      const events = await many(`
+        SELECT e.id,e.title,e.share_token,e.event_date,e.event_end_time
+        FROM events e JOIN event_participants ep ON ep.event_id=e.id
+        WHERE ep.user_id=$1 AND e.event_date IS NOT NULL AND e.event_end_time IS NOT NULL
+      `, [userId]);
+      for (const e of events.filter((row) => hasEnded(row.event_date, row.event_end_time))) {
+        const exists = await one(`SELECT 1 FROM notifications WHERE user_id=$1 AND ((target_type='event-rating' AND target_id=$2) OR body = 'rating-event:' || $2)`, [userId, e.id]);
+        if (!exists) await this.createNotification(userId, {
+          title: 'Avalie o evento que você participou',
+          body: `O evento "${e.title}" terminou. Toque para avaliar sua experiência.`,
+          targetType: 'event-rating', targetId: e.id, targetToken: e.share_token,
+        });
+      }
+
+      const presentations = await many(`
+        SELECT p.id,p.title,p.presentation_id,p.share_token,p.mentioned_event_id,p.event_date,p.event_end_time
+        FROM posts p
+        WHERE (p.type='presentation' OR p.presentation_id IS NOT NULL)
+          AND p.event_date IS NOT NULL AND p.event_end_time IS NOT NULL
+          AND p.mentioned_event_id IS NOT NULL
+      `, [userId]);
+      const participantEvents = new Set((await many(`SELECT event_id FROM event_participants WHERE user_id=$1`, [userId])).map((r) => r.event_id));
+      for (const p of presentations.filter((row) => hasEnded(row.event_date, row.event_end_time) && participantEvents.has(row.mentioned_event_id))) {
+        const exists = await one(`SELECT 1 FROM notifications WHERE user_id=$1 AND ((target_type='presentation-rating' AND target_id=$2) OR body LIKE 'rating-presentation:' || $2 || ':%')`, [userId, p.id]);
+        if (!exists) await this.createNotification(userId, {
+          title: 'Avalie a apresentação',
+          body: `A apresentação "${p.title || 'Apresentação'}" terminou. Toque para avaliar.`,
+          targetType: 'presentation-rating', targetId: p.id, targetToken: p.share_token,
+        });
+      }
     },
 
     async createEventRating(userId, { eventId, stars, comment }) {
-      const event = await one(`SELECT id FROM events WHERE id=$1 AND event_date + event_end_time <= NOW()`, [eventId]);
-      if (!event) {
-        const error = new Error('Evento não encontrado ou ainda não terminou.');
+      const event = await one(`SELECT id,title,author_id,event_date,event_end_time FROM events WHERE id=$1`, [eventId]);
+      const participant = await one(`SELECT 1 FROM event_participants WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+      if (!event || !participant || !hasEnded(event.event_date, event.event_end_time)) {
+        const error = new Error('Você só pode avaliar um evento do qual participou e que já terminou.');
         error.code = 'FORBIDDEN';
         throw error;
       }
@@ -646,7 +795,8 @@ export function makeRepository(db) {
     },
 
     async listNotifications(userId) {
-      return many(`SELECT id,title,body,read_at,created_at FROM notifications
+      await this.ensureRatingNotifications(userId);
+      return many(`SELECT id,title,body,target_type,target_id,target_token,read_at,created_at FROM notifications
         WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`, [userId]);
     },
 
@@ -672,19 +822,22 @@ export function makeRepository(db) {
     async createContent(userId, mode, data) {
       if (mode === 'event') {
         // Auto-add author as participant
-        const event = await one(`INSERT INTO events(author_id,title,description,image,event_date,event_time,event_end_time,location)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-          RETURNING id,title,description,image,event_date,event_time,event_end_time,location,created_at`,
+        const visibility = normalizeVisibility(data.visibility);
+        if (visibility === 'selected') await getAllowedAudience(userId, data.audienceUserIds || []);
+        const event = await one(`INSERT INTO events(author_id,title,description,image,event_date,event_time,event_end_time,location,visibility,share_token)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          RETURNING id,title,description,image,event_date,event_time,event_end_time,location,visibility,share_token,created_at`,
           [userId, data.title, data.description || '', data.image || null,
-           data.eventDate || null, data.eventTime || null, data.eventEndTime || null, data.location || '']);
-
+           data.eventDate || null, data.eventTime || null, data.eventEndTime || null, data.location || '', visibility, crypto.randomUUID()]);
+        await setAudience('event', event.id, userId, visibility, data.audienceUserIds || []);
         await db.query(`INSERT INTO event_participants(event_id, user_id, status) VALUES($1, $2, 'host') ON CONFLICT DO NOTHING`, [event.id, userId]);
         return event;
       }
       if (mode === 'live') {
-        return one(`INSERT INTO live_rooms(author_id,title,description)
-          VALUES($1,$2,$3) RETURNING id,title,description,created_at`,
-          [userId, data.title, data.description || '']);
+        const visibility = normalizeVisibility(data.visibility);
+        return one(`INSERT INTO live_rooms(author_id,title,description,visibility,share_token)
+          VALUES($1,$2,$3,$4,$5) RETURNING id,title,description,visibility,share_token,created_at`,
+          [userId, data.title, data.description || '', visibility, crypto.randomUUID()]);
       }
       if (mode === 'post') {
         return this.createPost(userId, {
@@ -692,6 +845,8 @@ export function makeRepository(db) {
           content: data.description ? `${data.title}\n${data.description}` : data.title,
           image: data.image,
           mentionedEventId: data.mentionedEventId || null,
+          visibility: data.visibility,
+          audienceUserIds: data.audienceUserIds || [],
         });
       }
       if (mode === 'presentation') {
@@ -701,7 +856,7 @@ export function makeRepository(db) {
     },
 
     async listUserPosts(userId) {
-      const rows = await many(`SELECT p.id,p.title,p.content,p.image,p.likes,p.type,p.created_at,p.mentioned_event_id,
+      const rows = await many(`SELECT p.id,p.title,p.content,p.image,p.likes,p.type,p.created_at,p.mentioned_event_id,p.visibility,p.share_token,
         (SELECT count(*)::int FROM post_comments c WHERE c.post_id=p.id) AS comments_count,
         e.title AS mentioned_event_title, e.event_date AS mentioned_event_date, e.event_time AS mentioned_event_time, e.location AS mentioned_event_location
         FROM posts p
@@ -715,6 +870,8 @@ export function makeRepository(db) {
         image: p.image,
         likes: p.likes,
         type: p.type,
+        visibility: p.visibility || 'public',
+        share_token: p.share_token,
         created_at: p.created_at,
         comments_count: Number(p.comments_count || 0),
         mentioned_event: p.mentioned_event_id ? {
@@ -734,7 +891,7 @@ export function makeRepository(db) {
         err.code = 'FORBIDDEN';
         throw err;
       }
-      return one(`
+      const updated = await one(`
         UPDATE events SET
           title = COALESCE($3, title),
           description = COALESCE($4, description),
@@ -742,21 +899,25 @@ export function makeRepository(db) {
           event_date = COALESCE($6, event_date),
           event_time = COALESCE($7, event_time),
           event_end_time = COALESCE($8, event_end_time),
-          location = COALESCE($9, location)
+          location = COALESCE($9, location),
+          visibility = COALESCE($10, visibility)
         WHERE id = $1 AND author_id = $2
-        RETURNING id, title, description, image, event_date, event_time, event_end_time, location, created_at
-      `, [eventId, userId, data.title ?? null, data.description ?? null, data.image ?? null, data.eventDate ?? null, data.eventTime ?? null, data.eventEndTime ?? null, data.location ?? null]);
+        RETURNING id, title, description, image, event_date, event_time, event_end_time, location, visibility, share_token, created_at
+      `, [eventId, userId, data.title ?? null, data.description ?? null, data.image ?? null, data.eventDate ?? null, data.eventTime ?? null, data.eventEndTime ?? null, data.location ?? null, data.visibility ?? null]);
+      if (data.visibility === 'selected') await setAudience('event', eventId, userId, data.visibility, data.audienceUserIds || []);
+      return updated;
     },
 
-    async getEventById(eventId, userId = null) {
+    async getEventById(eventId, userId = null, shareToken = null) {
       const ev = await one(`
-        SELECT e.id, e.title, e.description, e.image, e.event_date, e.event_time, e.event_end_time, e.location, e.created_at,
+        SELECT e.id, e.title, e.description, e.image, e.event_date, e.event_time, e.event_end_time, e.location, e.visibility, e.share_token, e.created_at,
           u.id AS author_id, u.name AS author_name, u.avatar AS author_avatar, u.role AS author_role
         FROM events e
         JOIN users u ON u.id = e.author_id
         WHERE e.id = $1
       `, [eventId]);
       if (!ev) return null;
+      if (!(await canView('event', eventId, userId, shareToken))) return null;
 
       const [partCount, participants, commentsCount, isPart, isSaved] = await Promise.all([
         one(`SELECT count(*)::int AS count FROM event_participants WHERE event_id=$1`, [eventId]),
@@ -776,6 +937,8 @@ export function makeRepository(db) {
         event_time: ev.event_time,
         event_end_time: ev.event_end_time,
         location: ev.location,
+        visibility: ev.visibility || 'public',
+        share_token: ev.share_token,
         created_at: ev.created_at,
         type: 'event',
         author: {
@@ -792,8 +955,28 @@ export function makeRepository(db) {
       };
     },
 
+
+    async listCalendar(userId) {
+      return many(`
+        SELECT * FROM (
+          SELECT e.id,e.title,e.description AS content,e.image,e.event_date,e.event_time,e.event_end_time,e.location,e.created_at,
+            'event'::varchar AS type,u.id AS author_id,u.name AS author_name,u.avatar AS author_avatar
+          FROM events e JOIN users u ON u.id=e.author_id
+          WHERE e.author_id=$1 OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id=e.id AND ep.user_id=$1)
+          UNION ALL
+          SELECT p.id,p.title,p.content,p.image,p.event_date,p.event_time,p.event_end_time,''::varchar AS location,p.created_at,
+            'presentation'::varchar AS type,u.id AS author_id,u.name AS author_name,u.avatar AS author_avatar
+          FROM posts p JOIN users u ON u.id=p.author_id
+          WHERE (p.type='presentation' OR p.presentation_id IS NOT NULL)
+            AND (p.author_id=$1 OR EXISTS (SELECT 1 FROM event_participants ep WHERE ep.event_id=p.mentioned_event_id AND ep.user_id=$1))
+        ) items
+        WHERE event_date IS NOT NULL
+        ORDER BY event_date ASC, event_time ASC NULLS LAST, created_at DESC
+      `, [userId]);
+    },
+
     async listEvents(userId) {
-      return many(`SELECT e.id,e.title,e.description,e.image,e.event_date,e.event_time,e.location,e.created_at,
+      return many(`SELECT e.id,e.title,e.description,e.image,e.event_date,e.event_time,e.event_end_time,e.location,e.visibility,e.share_token,e.created_at,
         u.id author_id,u.name author_name,u.avatar author_avatar,
         COALESCE(ep.participants_count, 0)::int AS participants_count,
         COALESCE(c.comments_count, 0)::int AS comments_count
@@ -853,6 +1036,16 @@ export function makeRepository(db) {
       `, [userId]);
     },
 
+    async listFollowers(userId) {
+      return many(`
+        SELECT u.id, u.name, u.avatar, u.role, u.city, uc.created_at AS followed_at
+        FROM user_connections uc
+        JOIN users u ON u.id = uc.user_id
+        WHERE uc.connected_user_id = $1
+        ORDER BY uc.created_at DESC
+      `, [userId]);
+    },
+
     // --- AVAILABLE PRESENTATIONS / EVENTS TO RATE ---
     async listAvailablePresentations(userId) {
       const presentations = await many(`
@@ -861,12 +1054,15 @@ export function makeRepository(db) {
           'presentation' AS type
         FROM posts p
         JOIN users u ON u.id=p.author_id
-        WHERE p.type='presentation' OR p.presentation_id IS NOT NULL
+        WHERE (p.type='presentation' OR p.presentation_id IS NOT NULL)
+          AND p.event_date IS NOT NULL AND p.event_end_time IS NOT NULL
         ORDER BY p.created_at DESC
-        LIMIT 50
+        LIMIT 100
       `);
 
-      const formattedPresentations = presentations.map((p) => ({
+      const participantEvents = new Set((await many(`SELECT event_id FROM event_participants WHERE user_id=$1`, [userId])).map((r) => r.event_id));
+      const endedPresentations = presentations.filter((p) => hasEnded(p.event_date, p.event_end_time) && (p.author_id === userId || (p.mentioned_event_id && participantEvents.has(p.mentioned_event_id)))).slice(0, 50);
+      const formattedPresentations = endedPresentations.map((p) => ({
         postId: p.post_id,
         presentationId: p.presentation_id || `presentation-${p.post_id}`,
         title: p.title || p.content || 'Apresentação',
@@ -938,6 +1134,14 @@ export function makeRepository(db) {
         }
       }
 
+      if (post && (post.type === 'presentation' || post.presentation_id)) {
+        if (!post.event_date || !post.event_end_time || !hasEnded(post.event_date, post.event_end_time)) {
+          const err = new Error('A apresentação ainda não terminou. A avaliação será liberada após o horário de fim.');
+          err.code = 'FORBIDDEN';
+          throw err;
+        }
+      }
+
       if (!presentationId) {
         const err = new Error('Apresentação não informada.');
         err.code = 'PRESENTATION_REQUIRED';
@@ -958,6 +1162,11 @@ export function makeRepository(db) {
       }
 
       const speaker = await one(`SELECT id,name FROM users WHERE id=$1`, [targetSpeakerId]);
+      if (speaker?.id === raterId) {
+        const error = new Error('Você não pode avaliar a si mesmo.');
+        error.code = 'SELF_RATING';
+        throw error;
+      }
       if (!speaker) {
         const err = new Error('Apresentador não encontrado.');
         err.code = '23503';
@@ -1031,6 +1240,24 @@ export function makeRepository(db) {
         averageSkills,
         recentRatings: recent,
       };
+    },
+
+
+    async getSharedContent(type, id, viewerId = null, shareToken = null) {
+      if (type === 'user') {
+        const user = await this.getUser(id);
+        if (!user) return null;
+        const { email, ...publicUser } = user;
+        return { type: 'user', user: publicUser };
+      }
+      if (!['post', 'presentation', 'event'].includes(type)) return null;
+      const contentType = type === 'event' ? 'event' : 'post';
+      const allowed = await canView(contentType, id, viewerId, shareToken);
+      if (!allowed) return null;
+      if (type === 'event') return this.getEventById(id, viewerId, shareToken);
+      const post = await this.getPostById(id);
+      if (!post) return null;
+      return { ...post, type: type === 'presentation' ? 'presentation' : post.type };
     },
 
     async deleteOwnPost(userId, postId) {

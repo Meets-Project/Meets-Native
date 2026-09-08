@@ -8,6 +8,7 @@ services:
       POSTGRES_DB: meets
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      TZ: America/Sao_Paulo
 
     ports:
       - "5432:5432"
@@ -35,6 +36,7 @@ services:
       PORT: 3333
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/meets
       JWT_SECRET: change-this-secret-in-production
+      TZ: America/Sao_Paulo
 
     ports:
       - "3334:3333"

@@ -26,3 +26,17 @@ export async function requireAuth(req, res, next) {
     next(error);
   }
 }
+
+export async function optionalAuth(req, _res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return next();
+  try {
+    const payload = jwt.verify(token, secret());
+    const result = await query('SELECT id, email FROM users WHERE id=$1', [payload.sub]);
+    if (result.rows[0]) req.auth = { ...payload, sub: result.rows[0].id, email: result.rows[0].email };
+  } catch (_) {
+    // Public/shared links remain accessible when an old/expired token is present.
+  }
+  next();
+}

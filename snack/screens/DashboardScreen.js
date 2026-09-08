@@ -5,7 +5,7 @@ import { screenStyles } from '../styles/screenStyles';
 import { colors } from '../styles/colors';
 
 export function DashboardScreen() {
-  const maxTrend = Math.max(...dashboardTrend.map((item) => item.value));
+  const maxTrend = Math.max(1, ...dashboardTrend.map((item) => Number(item.value || 0)));
 
   return (
     <ScrollView contentContainerStyle={screenStyles.listContent} showsVerticalScrollIndicator={false}>
@@ -26,7 +26,7 @@ export function DashboardScreen() {
           <Text style={screenStyles.rowSubtitle}>Eventos</Text>
           <Text style={{ fontSize: 26, fontWeight: '800', color: colors.primary, marginTop: 8 }}>{dashboardStats.events.total}</Text>
           <Text style={{ color: colors.textMuted, marginTop: 6 }}>Participantes: {dashboardStats.events.participants}</Text>
-          <Text style={{ color: colors.textMuted }}>Média: {dashboardStats.events.averageRating.toFixed(1)}</Text>
+          <Text style={{ color: colors.textMuted }}>Média: {Number(dashboardStats.events.averageRating || 0).toFixed(1)}</Text>
         </View>
       </View>
 
@@ -35,7 +35,7 @@ export function DashboardScreen() {
         <View style={{ gap: 12 }}>
           {[
             { label: 'Engajamento de posts', value: dashboardStats.posts.engagement },
-            { label: 'Compartilhamentos', value: Math.round((dashboardStats.posts.shares / dashboardStats.posts.total) * 10) },
+            { label: 'Compartilhamentos', value: dashboardStats.posts.total > 0 ? Math.round((dashboardStats.posts.shares / dashboardStats.posts.total) * 10) : 0 },
             { label: 'Média de eventos', value: Math.round(dashboardStats.events.averageRating * 20) },
           ].map((metric) => (
             <View key={metric.label}>

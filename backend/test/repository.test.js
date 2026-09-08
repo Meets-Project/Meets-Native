@@ -23,7 +23,7 @@ function testDb() {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
       content text NOT NULL, image text, likes integer NOT NULL DEFAULT 0,
       title varchar(160) NOT NULL DEFAULT '', type varchar(30) NOT NULL DEFAULT 'default',
-      presentation_id varchar(160), event_date date, event_time time, event_end_time time, mentioned_event_id uuid, created_at timestamptz NOT NULL DEFAULT now()
+      presentation_id varchar(160), visibility varchar(20) NOT NULL DEFAULT 'public', share_token text, event_date date, event_time time, event_end_time time, mentioned_event_id uuid, created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE post_likes (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
     CREATE TABLE favorites (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
@@ -31,14 +31,14 @@ function testDb() {
     CREATE TABLE events (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
       title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', image text,
-      event_date date, event_time time, event_end_time time, location varchar(255) NOT NULL DEFAULT '',
+      event_date date, event_time time, event_end_time time, location varchar(255) NOT NULL DEFAULT '', visibility varchar(20) NOT NULL DEFAULT 'public', share_token text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE saved_events (user_id uuid NOT NULL REFERENCES users(id), event_id uuid NOT NULL REFERENCES events(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,event_id));
     CREATE TABLE event_participants (event_id uuid NOT NULL REFERENCES events(id), user_id uuid NOT NULL REFERENCES users(id), status varchar(40) NOT NULL DEFAULT 'confirmed', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(event_id,user_id));
     CREATE TABLE live_rooms (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id), title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE history (id serial PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id), type varchar(40) NOT NULL, title varchar(200) NOT NULL, subtitle varchar(255) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE notifications (id serial PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id), title varchar(160) NOT NULL, body varchar(500) NOT NULL DEFAULT '', read_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE notifications (id serial PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id), title varchar(160) NOT NULL, body varchar(500) NOT NULL DEFAULT '', target_type varchar(30), target_id text, target_token text, read_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE settings (user_id uuid PRIMARY KEY REFERENCES users(id), notifications_enabled boolean NOT NULL DEFAULT true, dark_mode boolean NOT NULL DEFAULT false, updated_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(160), preview varchar(500), created_at timestamptz DEFAULT now());
     CREATE TABLE chat_members (chat_id uuid NOT NULL REFERENCES chats(id), user_id uuid NOT NULL REFERENCES users(id), unread integer NOT NULL DEFAULT 0, PRIMARY KEY(chat_id, user_id));
@@ -55,10 +55,12 @@ function testDb() {
       updated_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE(presentation_id,rater_id,speaker_id)
     );
+    CREATE TABLE content_audience (content_type varchar(20) NOT NULL, content_id text NOT NULL, user_id uuid NOT NULL REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(content_type,content_id,user_id));
     CREATE TABLE user_connections (
       user_id uuid NOT NULL REFERENCES users(id), connected_user_id uuid NOT NULL REFERENCES users(id),
       created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id, connected_user_id)
     );
+    CREATE TABLE event_ratings (id serial PRIMARY KEY, event_id uuid NOT NULL REFERENCES events(id), rater_id uuid NOT NULL REFERENCES users(id), stars numeric(2,1) NOT NULL, comment varchar(1000) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(event_id,rater_id));
     CREATE TABLE post_comments (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       post_id uuid REFERENCES posts(id) ON DELETE CASCADE,
@@ -168,7 +170,7 @@ describe('Meets persistence and features', () => {
 
   it('creates a presentation and persists presentation and speaker ratings with skills radar', async () => {
     const post = await repo.createPresentation(user.id,{
-      title:'Talk Inovação',description:'Conteúdo sobre tecnologia',presentationId:'talk-1',speakerIds:[other.id]
+      title:'Talk Inovação',description:'Conteúdo sobre tecnologia',presentationId:'talk-1',speakerIds:[other.id],eventDate:'2020-01-01',eventTime:'10:00',eventEndTime:'11:00'
     });
 
     const available = await repo.listAvailablePresentations(user.id);
@@ -188,4 +190,24 @@ describe('Meets persistence and features', () => {
     expect(summary.averageSkills.clarity).toBe(80);
     expect(summary.overall).toBeGreaterThan(0);
   });
+  it('supports private visibility and direct share links', async () => {
+    await repo.toggleConnection(other.id, user.id); // other follows user
+    const post = await repo.createPost(user.id, { content:'Privado', visibility:'followers' });
+    expect((await repo.listFeed(other.id,'all')).some(i => i.id === post.id)).toBe(true);
+
+    const outsider = await repo.createUser({name:'Terceiro',email:'terceiro@example.com',passwordHash:await bcrypt.hash('123456',4)});
+    expect((await repo.listFeed(outsider.id,'all')).some(i => i.id === post.id)).toBe(false);
+
+    const linkPost = await repo.createPost(user.id, { content:'Link only', visibility:'link' });
+    expect(await repo.getSharedContent('post', linkPost.id, null, linkPost.share_token)).toBeTruthy();
+    expect(await repo.getSharedContent('post', linkPost.id, outsider.id, null)).toBe(null);
+  });
+
+  it('creates exact rating notification after a participated event ends', async () => {
+    const row = await db.query(`INSERT INTO events(author_id,title,description,event_date,event_time,event_end_time,location,visibility,share_token) VALUES($1,'Evento encerrado','x','2020-01-01','10:00','11:00','x','public',gen_random_uuid()::text) RETURNING id`, [user.id]);
+    await db.query(`INSERT INTO event_participants(event_id,user_id,status) VALUES($1,$2,'confirmed')`, [row.rows[0].id, other.id]);
+    const notes = await repo.listNotifications(other.id);
+    expect(notes.some(n => n.target_type === 'event-rating' && n.target_id === row.rows[0].id)).toBe(true);
+  });
+
 });

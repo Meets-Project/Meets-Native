@@ -22,6 +22,8 @@ import { EventRatingScreen } from '../screens/EventRatingScreen';
 import { PostDetailScreen } from '../screens/PostDetailScreen';
 import { RankingScreen } from '../screens/RankingScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
+import { CalendarScreen } from '../screens/CalendarScreen';
+import { SharedContentScreen } from '../screens/SharedContentScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { CreateScreen } from '../screens/CreateScreen';
@@ -104,6 +106,8 @@ export default function AppNavigation() {
       EventRating: 'Avaliar evento',
       Ranking: 'Ranking de apresentadores',
       Dashboard: 'Dashboard',
+      Calendar: 'Calendário',
+      SharedContent: 'Conteúdo compartilhado',
     };
     if (detailTitles[routeName]) return detailTitles[routeName];
     const menu = menuItems.find((m) => m.id === routeName);
@@ -128,7 +132,7 @@ export default function AppNavigation() {
     } catch (e) {}
   };
 
-  const authRoutes = new Set(['Loading', 'Login', 'Signup']);
+  const authRoutes = new Set(['Loading', 'Login', 'Signup', 'SharedContent']);
   const tabRoutes = new Set(['home', 'search', 'create', 'chat', 'profile']);
   const showChrome = !authRoutes.has(currentRouteName);
   const isSecondaryScreen = showChrome && !tabRoutes.has(currentRouteName);
@@ -163,6 +167,7 @@ export default function AppNavigation() {
               navigationRef.navigate('MainTabs', { screen: 'home' });
             }}
             onNotificationsPress={() => setIsNotificationsOpen(true)}
+            onCalendarPress={() => navigationRef.navigate('Calendar')}
           />
         ) : null}
 
@@ -183,6 +188,8 @@ export default function AppNavigation() {
           <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           <Stack.Screen name="Ranking" component={RankingScreen} />
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
+          <Stack.Screen name="Calendar" component={CalendarScreen} />
+          <Stack.Screen name="SharedContent" component={SharedContentScreen} />
 
           <Stack.Screen name="favorites" component={FavoritesScreen} />
           <Stack.Screen name="history" component={HistoryScreen} />

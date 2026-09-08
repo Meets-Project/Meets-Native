@@ -32,6 +32,7 @@ export function FeedCard({ item, onRefresh }) {
   const authorName = item.author_name || item.author?.name || (typeof item.author === 'string' ? item.author : 'Membro');
   const authorAvatar = item.author_avatar || item.author?.avatar || item.avatar || '👤';
   const mentionedEvent = item.mentioned_event;
+  const contentEnded = Boolean(item.event_date && item.event_end_time && `${String(item.event_date).slice(0, 10)} ${String(item.event_end_time).slice(0, 5)}` <= (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })());
 
   async function like() {
     try {
@@ -121,8 +122,9 @@ export function FeedCard({ item, onRefresh }) {
 
   function handleShare() {
     shareContent({
-      type: isEvent ? 'event' : 'post',
+      type: isEvent ? 'event' : isPresentation ? 'presentation' : 'post',
       id: item.id,
+      token: item.share_token || '',
       title: item.title || item.content || 'Publicação no Meets',
       text: item.title ? `${item.title} - ${item.content || ''}` : item.content,
     });
@@ -411,6 +413,18 @@ export function FeedCard({ item, onRefresh }) {
         </TouchableOpacity>
 
       </View>
+
+      {(isEvent && contentEnded && isParticipating) || (isPresentation && contentEnded) ? (
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 10, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary }}
+          onPress={() => isEvent
+            ? navigation.navigate('EventRating', { eventId: item.id })
+            : navigation.navigate('PresentationRating', { postId: item.id, presentationId: item.presentation_id || `presentation-${item.id}`, presentationTitle: item.title || 'Apresentação', speakers })}
+        >
+          <MaterialCommunityIcons name="star-circle-outline" size={20} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontWeight: '900' }}>Avaliar {isEvent ? 'evento' : 'apresentação'}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Comments Modal */}
       <CommentsModal

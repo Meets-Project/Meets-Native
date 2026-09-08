@@ -55,17 +55,29 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
     if (!item) return;
     if (item.unread) markNotificationRead(item.id).catch(() => {});
 
-    if (item.body?.startsWith('rating-presentation:')) {
-      const [postId, presentationId] = item.body.replace('rating-presentation:', '').split(':');
+    if (item.target_type === 'presentation-rating') {
       onClose();
       navigation.navigate('PresentationRating', {
-        postId,
-        presentationId,
-        presentationTitle: 'Avaliação de apresentação',
+        postId: item.target_id,
+        shareToken: item.target_token || '',
+        presentationTitle: item.title,
       });
       return;
     }
 
+    if (item.target_type === 'event-rating') {
+      onClose();
+      navigation.navigate('EventRating', { eventId: item.target_id });
+      return;
+    }
+
+    // Compatibilidade com notificações antigas.
+    if (item.body?.startsWith('rating-presentation:')) {
+      const [postId, presentationId] = item.body.replace('rating-presentation:', '').split(':');
+      onClose();
+      navigation.navigate('PresentationRating', { postId, presentationId, presentationTitle: 'Avaliação de apresentação' });
+      return;
+    }
     if (item.body?.startsWith('rating-event:')) {
       const eventId = item.body.replace('rating-event:', '').split(':')[0];
       onClose();

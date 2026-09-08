@@ -22,6 +22,7 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
   const [content, setContent] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
+  const [eventEndTime, setEventEndTime] = useState('');
   const [location, setLocation] = useState('');
   const [cep, setCep] = useState('');
   const [addressNumber, setAddressNumber] = useState('');
@@ -41,6 +42,7 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
     setContent(item.content || item.description || '');
     setEventDate(item.event_date ? isoToDate(item.event_date) : '');
     setEventTime(item.event_time ? String(item.event_time).slice(0, 5) : '');
+    setEventEndTime(item.event_end_time ? String(item.event_end_time).slice(0, 5) : '');
     setLocation(item.location || '');
     setCep('');
     setAddressNumber('');
@@ -93,14 +95,25 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
         }
       }
 
-      if (eventTime.trim()) {
-        const tVal = validateTime(eventTime);
+      const startValue = eventTime.trim();
+      const endValue = eventEndTime.trim();
+      if (startValue) {
+        const tVal = validateTime(startValue);
         if (!tVal.valid) {
           setTimeError(tVal.error);
           hasError = true;
-        } else {
-          setTimeError('');
         }
+      }
+      if (endValue) {
+        const endVal = validateTime(endValue);
+        if (!endVal.valid) {
+          setTimeError(endVal.error);
+          hasError = true;
+        }
+      }
+      if (startValue && endValue && validateTime(startValue).valid && validateTime(endValue).valid && startValue >= endValue) {
+        setTimeError('O horário de fim deve ser depois do início.');
+        hasError = true;
       }
 
       if (cep.trim() && (!venueAddress || !addressNumber.trim())) {
@@ -121,6 +134,7 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
           description: content.trim(),
           eventDate: eventDate.trim() ? dateToISO(eventDate) : undefined,
           eventTime: eventTime.trim() || undefined,
+          eventEndTime: eventEndTime.trim() || undefined,
           location: venueAddress ? `${venueAddress.logradouro}, ${addressNumber.trim()} - ${venueAddress.bairro}, ${venueAddress.localidade} - ${venueAddress.uf}` : location.trim() || undefined,
         });
       } else {
@@ -205,26 +219,25 @@ export function EditContentModal({ visible, onClose, item, onSaved }) {
                 />
 
                 <FormInput
-                  label="Horário"
+                  label="Horário de início"
                   mask="time"
                   value={eventTime}
-                  onChangeText={(val) => {
-                    setEventTime(val);
-                    if (timeError) {
-                      const v = validateTime(val);
-                      setTimeError(v.valid ? '' : v.error);
-                    }
-                  }}
+                  onChangeText={(val) => setEventTime(val)}
                   placeholder="HH:MM"
                   leftIcon="clock-outline"
                   error={timeError}
-                  helperText="Formato: HH:MM (ex: 19:30)"
-                  onBlur={() => {
-                    if (eventTime) {
-                      const v = validateTime(eventTime);
-                      if (!v.valid) setTimeError(v.error);
-                    }
-                  }}
+                  helperText="Formato: HH:MM de 00:00 a 23:59 (ex: 19:30)"
+                />
+
+                <FormInput
+                  label="Horário de fim"
+                  mask="time"
+                  value={eventEndTime}
+                  onChangeText={(val) => setEventEndTime(val)}
+                  placeholder="HH:MM"
+                  leftIcon="clock-end"
+                  error={timeError}
+                  helperText="Informe quando o evento termina. Deve ser depois do início."
                 />
 
                 <FormInput label="CEP do local" value={cep} onChangeText={lookupCep} placeholder="00000-000" keyboardType="numeric" leftIcon="map-marker-outline" />

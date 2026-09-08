@@ -86,3 +86,16 @@ Search and chat now read from the API instead of rendering fake sample records. 
 ## Important
 
 Do not use the development JWT secret in production. Set a strong `JWT_SECRET` and restrict `CORS_ORIGIN`.
+
+## Correções recentes
+
+A migração `008_visibility_sharing_notifications_calendar.sql` repara instalações antigas e adiciona:
+- colunas de data/horário das apresentações (`posts.event_date`, `posts.event_time`, `posts.event_end_time`);
+- privacidade `public`, `followers`, `selected` e `link` para conteúdo;
+- audiência individual persistida em `content_audience`;
+- tokens de links diretos;
+- `event_ratings` persistente;
+- notificações com destino (`target_type`, `target_id`, `target_token`);
+- calendário de eventos/apresentações.
+
+A foto do cadastro é opcional e o horário de início é validado para ficar antes do horário de fim.

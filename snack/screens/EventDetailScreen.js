@@ -103,6 +103,7 @@ export function EventDetailScreen() {
     shareContent({
       type: 'event',
       id: eventId,
+      token: event?.share_token || '',
       title: event?.title || 'Evento no Meets',
       text: event?.title ? `${event.title} - ${event.description || ''}` : event?.description,
     });
@@ -154,6 +155,7 @@ export function EventDetailScreen() {
   const timeStr = event.event_time ? ` às ${String(event.event_time).slice(0, 5)}` : '';
   const endTimeStr = event.event_end_time ? ` - ${String(event.event_end_time).slice(0, 5)}` : '';
   const authorName = event.author?.name || event.author_name || 'Organizador';
+  const eventEnded = Boolean(event.event_date && event.event_end_time && `${String(event.event_date).slice(0, 10)} ${String(event.event_end_time).slice(0, 5)}` <= (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })());
 
   return (
     <ScrollView contentContainerStyle={screenStyles.listContent} showsVerticalScrollIndicator={false}>
@@ -192,6 +194,15 @@ export function EventDetailScreen() {
       {/* Action Buttons */}
       <View style={screenStyles.sectionCard}>
         <Text style={screenStyles.sectionTitle}>Ações</Text>
+        {eventEnded && isParticipating ? (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('EventRating', { eventId })}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 10, paddingVertical: 11, borderRadius: 12, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary }}
+          >
+            <MaterialCommunityIcons name="star-circle-outline" size={20} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontWeight: '900' }}>Avaliar evento encerrado</Text>
+          </TouchableOpacity>
+        ) : null}
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
           {/* Participar */}
           <TouchableOpacity

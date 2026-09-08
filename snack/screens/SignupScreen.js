@@ -75,10 +75,6 @@ export function SignupScreen() {
   async function handleSignup() {
     setMessage('');
 
-    if (!avatar) {
-      setAvatarError('Adicione uma foto de perfil para continuar.');
-      return;
-    }
     setAvatarError('');
 
     if (name.trim().length < 2) {
@@ -132,7 +128,7 @@ export function SignupScreen() {
       <View style={authStyles.card}>
         <TouchableOpacity onPress={chooseAvatar} style={{ alignItems: 'center', marginBottom: 4 }}>
           {avatar ? <Image source={{ uri: avatar }} style={{ width: 88, height: 88, borderRadius: 44 }} /> : <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}><MaterialCommunityIcons name="camera-plus-outline" size={30} color={colors.primary} /></View>}
-          <Text style={{ color: colors.primary, fontWeight: '700', marginTop: 8 }}>{avatar ? 'Trocar foto' : 'Adicionar foto de perfil'}</Text>
+          <Text style={{ color: colors.primary, fontWeight: '700', marginTop: 8 }}>{avatar ? 'Trocar foto' : 'Adicionar foto de perfil (opcional)'}</Text>
         </TouchableOpacity>
         {avatarError ? <Text style={{ color: '#d93025', textAlign: 'center', marginBottom: 14 }}>{avatarError}</Text> : null}
         <FormInput

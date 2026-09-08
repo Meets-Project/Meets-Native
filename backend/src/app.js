@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { query } from './db.js';
 import { makeRepository } from './repository.js';
-import { requireAuth, signToken } from './auth.js';
+import { optionalAuth, requireAuth, signToken } from './auth.js';
 
 const app = express();
 const repo = makeRepository({ query });
@@ -101,7 +101,6 @@ app.post('/auth/signup', async (req, res, next) => {
   try {
     const data = credentials.parse(req.body);
     if (!data.name) return res.status(400).json({ message: 'Nome é obrigatório.' });
-    if (!data.avatar) return res.status(400).json({ message: 'Foto de perfil é obrigatória.' });
     const exists = await repo.findUserByEmail(data.email);
     if (exists) return res.status(409).json({ message: 'E-mail já cadastrado.' });
     const passwordHash = await bcrypt.hash(data.password, 12);
@@ -143,7 +142,7 @@ app.put('/users/me', requireAuth, async (req, res, next) => {
 app.get('/search', requireAuth, async (req, res, next) => {
   try {
     const q = String(req.query.q || '').trim();
-    res.json({ data: q ? await repo.search(q) : [] });
+    res.json({ data: q ? await repo.search(q, req.auth.sub) : [] });
   } catch (e) { next(e); }
 });
 
@@ -166,6 +165,12 @@ app.get('/users/connections', requireAuth, async (req, res, next) => {
   try {
     const connections = await repo.listConnections(req.auth.sub);
     res.json({ data: connections });
+  } catch (e) { next(e); }
+});
+
+app.get('/users/followers', requireAuth, async (req, res, next) => {
+  try {
+    res.json({ data: await repo.listFollowers(req.auth.sub) });
   } catch (e) { next(e); }
 });
 
@@ -210,6 +215,16 @@ app.post('/chats/:id/read', requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// --- PUBLIC / SHARED CONTENT ---
+app.get('/public/content/:type/:id', optionalAuth, async (req, res, next) => {
+  try {
+    const token = String(req.query.token || '').trim() || null;
+    const item = await repo.getSharedContent(req.params.type, req.params.id, req.auth?.sub || null, token);
+    if (!item) return res.status(404).json({ message: 'Conteúdo não encontrado ou você não tem permissão para acessá-lo.' });
+    res.json({ data: item });
+  } catch (e) { next(e); }
+});
+
 // --- FEED & CONTENT ---
 app.get('/feed', requireAuth, async (req, res, next) => {
   try {
@@ -228,6 +243,8 @@ app.post('/posts', requireAuth, async (req, res, next) => {
       presentationId: z.string().trim().max(160).optional(),
       mentionedEventId: z.string().uuid().optional().nullable(),
       speakerIds: z.array(z.string().uuid()).max(20).optional(),
+      visibility: z.enum(['public', 'followers', 'selected', 'link']).optional(),
+      audienceUserIds: z.array(z.string().uuid()).max(200).optional(),
     }).parse(req.body);
 
     let post;
@@ -238,6 +255,12 @@ app.post('/posts', requireAuth, async (req, res, next) => {
         image: data.image,
         presentationId: data.presentationId,
         speakerIds: data.speakerIds || [],
+        eventDate: data.eventDate,
+        eventTime: data.eventTime,
+        eventEndTime: data.eventEndTime,
+        mentionedEventId: data.mentionedEventId || null,
+        visibility: data.visibility,
+        audienceUserIds: data.audienceUserIds || [],
       });
     } else {
       post = await repo.createPost(req.auth.sub, data);
@@ -259,6 +282,8 @@ app.put('/posts/:id', requireAuth, async (req, res, next) => {
       content: z.string().trim().min(1).max(5000).optional(),
       image: z.string().max(15000000).optional().nullable(),
       mentionedEventId: z.string().uuid().optional().nullable(),
+      visibility: z.enum(['public', 'followers', 'selected', 'link']).optional(),
+      audienceUserIds: z.array(z.string().uuid()).max(200).optional(),
     }).parse(req.body);
 
     const updated = await repo.updatePost(req.auth.sub, req.params.id, data);
@@ -268,7 +293,7 @@ app.put('/posts/:id', requireAuth, async (req, res, next) => {
 
 // --- COMMENTS ROUTES ---
 app.get('/posts/:id/comments', requireAuth, async (req, res, next) => {
-  try { res.json({ data: await repo.listComments(req.params.id) }); } catch (e) { next(e); }
+  try { res.json({ data: await repo.listComments(req.params.id, req.auth.sub, 'post') }); } catch (e) { next(e); }
 });
 
 app.post('/posts/:id/comments', requireAuth, async (req, res, next) => {
@@ -283,7 +308,7 @@ app.post('/posts/:id/comments', requireAuth, async (req, res, next) => {
 });
 
 app.get('/events/:id/comments', requireAuth, async (req, res, next) => {
-  try { res.json({ data: await repo.listComments(req.params.id) }); } catch (e) { next(e); }
+  try { res.json({ data: await repo.listComments(req.params.id, req.auth.sub, 'event') }); } catch (e) { next(e); }
 });
 
 app.post('/events/:id/comments', requireAuth, async (req, res, next) => {
@@ -365,6 +390,8 @@ app.post('/content', requireAuth, async (req, res, next) => {
       presentationId: z.string().trim().max(160).optional(),
       mentionedEventId: z.string().uuid().optional().nullable(),
       speakerIds: z.array(z.string().uuid()).max(20).optional(),
+      visibility: z.enum(['public', 'followers', 'selected', 'link']).optional(),
+      audienceUserIds: z.array(z.string().uuid()).max(200).optional(),
     }).parse(req.body);
 
     const payload = {
@@ -407,7 +434,7 @@ app.post('/events/:id/participate', requireAuth, async (req, res, next) => {
 
 app.get('/events/:id/participants', requireAuth, async (req, res, next) => {
   try {
-    const participants = await repo.listEventParticipants(req.params.id);
+    const participants = await repo.listEventParticipants(req.params.id, req.auth.sub);
     res.json({ data: participants });
   } catch (e) { next(e); }
 });
@@ -430,6 +457,8 @@ app.put('/events/:id', requireAuth, async (req, res, next) => {
       eventTime: z.string().optional(),
       eventEndTime: z.string().optional(),
       location: z.string().max(255).optional(),
+      visibility: z.enum(['public', 'followers', 'selected', 'link']).optional(),
+      audienceUserIds: z.array(z.string().uuid()).max(200).optional(),
     }).parse(req.body);
 
     const payload = {
@@ -438,6 +467,11 @@ app.put('/events/:id', requireAuth, async (req, res, next) => {
       eventTime: raw.eventTime !== undefined ? normalizeTime(raw.eventTime) : undefined,
       eventEndTime: raw.eventEndTime !== undefined ? normalizeTime(raw.eventEndTime) : undefined,
     };
+    if (payload.eventTime && payload.eventEndTime && payload.eventTime >= payload.eventEndTime) {
+      const error = new Error('O horário de fim deve ser depois do início.');
+      error.code = 'INVALID_SCHEDULE';
+      throw error;
+    }
 
     const updated = await repo.updateEvent(req.auth.sub, req.params.id, payload);
     res.json({ data: updated });
@@ -499,6 +533,23 @@ app.get('/ratings/speakers/:speakerId', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.getSpeakerRatingSummary(req.params.speakerId) }); } catch (e) { next(e); }
 });
 
+
+app.get('/notifications', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await repo.listNotifications(req.auth.sub) }); } catch (e) { next(e); }
+});
+
+app.post('/notifications/:id/read', requireAuth, async (req, res, next) => {
+  try {
+    const notification = await repo.markNotificationRead(req.auth.sub, req.params.id);
+    if (!notification) return res.status(404).json({ message: 'Notificação não encontrada.' });
+    res.json({ data: notification });
+  } catch (e) { next(e); }
+});
+
+app.get('/calendar', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await repo.listCalendar(req.auth.sub) }); } catch (e) { next(e); }
+});
+
 app.get('/settings', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.listSettings(req.auth.sub) }); } catch (e) { next(e); }
 });
@@ -520,6 +571,7 @@ app.use((err, _req, res, _next) => {
   if (err.code === 'PRESENTATION_REQUIRED') return res.status(400).json({ message: err.message });
   if (err.code === 'INVALID_SCHEDULE') return res.status(400).json({ message: err.message });
   if (err.code === 'INVALID_VENUE_STATE') return res.status(400).json({ message: err.message });
+  if (err.code === 'AUDIENCE_REQUIRED') return res.status(400).json({ message: err.message });
   if (err.code === 'FORBIDDEN') return res.status(403).json({ message: err.message });
   if (err.code === '23505') return res.status(409).json({ message: 'Registro duplicado.' });
   if (err.code === '23503') return res.status(404).json({ message: err.message || 'Registro relacionado não encontrado.' });

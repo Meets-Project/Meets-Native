@@ -86,6 +86,9 @@ export async function getConnectionStatus(userId) {
 export async function getConnections() {
   return (await requestJson('/users/connections')).data;
 }
+export async function getFollowers() {
+  return (await requestJson('/users/followers')).data;
+}
 
 // --- FEED & CONTENT ---
 export async function getFeed(filter = 'all') {
@@ -108,6 +111,11 @@ export async function getEventParticipants(id) {
 
 export async function getHistory() { return (await requestJson('/history')).data; }
 export async function getNotifications() { return (await requestJson('/notifications')).data; }
+export async function getCalendar() { return (await requestJson('/calendar')).data; }
+export async function getSharedContent(type, id, token = '') {
+  const query = token ? `?token=${encodeURIComponent(token)}` : '';
+  return (await requestJson(`/public/content/${encodeURIComponent(type)}/${encodeURIComponent(id)}${query}`)).data;
+}
 export async function markNotificationRead(id) { return (await requestJson(`/notifications/${id}/read`, { method: 'POST' })).data; }
 export async function createEventRating(payload) {
   return (await requestJson('/ratings/events', { method: 'POST', body: JSON.stringify(payload) })).data;

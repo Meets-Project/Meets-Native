@@ -5,6 +5,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 import { presentationSkills } from '../data/presentationRatings';
 import { savePresentationRating, buildInitialSkillScores } from '../services/ratingsStorage';
+import { getAvailablePresentations, getSharedContent } from '../services/api';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
 
@@ -34,8 +35,24 @@ export function PresentationRatingScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const params = route.params || {};
-  const availableList = [];
-  const loadingAvailable = false;
+  const [availableList, setAvailableList] = useState([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+
+  React.useEffect(() => {
+    let active = true;
+    setLoadingAvailable(true);
+    getAvailablePresentations().then((list) => { if (active) setAvailableList(Array.isArray(list) ? list : []); }).catch(() => {}).finally(() => { if (active) setLoadingAvailable(false); });
+    if (params.postId) {
+      getSharedContent('presentation', params.postId, params.shareToken || '').then((item) => {
+        if (!active || !item) return;
+        setSelectedPostId(item.id || params.postId);
+        setSelectedPresId(item.presentation_id || params.presentationId || '');
+        setSelectedTitle(item.title || params.presentationTitle || 'Apresentação');
+        setRawSpeakers(Array.isArray(item.speakers) ? item.speakers : []);
+      }).catch(() => {});
+    }
+    return () => { active = false; };
+  }, [params.postId, params.shareToken, params.presentationId, params.presentationTitle]);
 
   const [selectedPostId, setSelectedPostId] = useState(params.postId || '');
   const [selectedPresId, setSelectedPresId] = useState(params.presentationId || '');

@@ -10,6 +10,7 @@ export function ScreenHeader({
   onMenuPress,
   onLogoPress,
   onNotificationsPress,
+  onCalendarPress,
 }) {
   return (
     <View style={headerStyles.container}>
@@ -49,6 +50,13 @@ export function ScreenHeader({
             </TouchableOpacity>
           ) : null}
 
+          <TouchableOpacity
+            onPress={onCalendarPress}
+            accessibilityLabel="Abrir calendário"
+            style={{ padding: 4 }}
+          >
+            <MaterialCommunityIcons name="calendar-month-outline" size={24} color="#ffffff" />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={onNotificationsPress}
             accessibilityLabel="Notificações"

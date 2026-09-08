@@ -5,8 +5,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
 import { colors } from '../styles/colors';
-import { createContent, clearToken, getMe, getMyEvents, getFeed } from '../services/api';
+import { createContent, clearToken, getMe, getMyEvents, getFeed, getFollowers } from '../services/api';
 import { FormInput } from '../components/FormInput';
+import { VisibilitySelector } from '../components/VisibilitySelector';
 import { dateToISO, formatLocalDate, isDateBeforeToday, validateDate, validateTime } from '../utils/masks';
 
 const copy = {
@@ -57,6 +58,9 @@ export function CreateFlowScreen() {
   const [mentionedEventId, setMentionedEventId] = useState('');
   const [availableEvents, setAvailableEvents] = useState([]);
   const [showEventPicker, setShowEventPicker] = useState(false);
+  const [visibility, setVisibility] = useState('public');
+  const [followers, setFollowers] = useState([]);
+  const [selectedFollowerIds, setSelectedFollowerIds] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -78,6 +82,11 @@ export function CreateFlowScreen() {
       setMessage('Imagem editada aplicada.');
     }
   }, [route.params?.editedImage]);
+
+  useEffect(() => {
+    if (!['event', 'presentation', 'post'].includes(mode)) return;
+    getFollowers().then((list) => setFollowers(Array.isArray(list) ? list : [])).catch(() => setFollowers([]));
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== 'event' && mode !== 'presentation') return;
@@ -108,7 +117,7 @@ export function CreateFlowScreen() {
 
   // Load available events for mention
   useEffect(() => {
-    if (mode === 'post') {
+    if (mode === 'post' || mode === 'presentation') {
       Promise.all([getMyEvents(), getFeed('events')])
         .then(([mine, feedEvents]) => {
           const list = [...(mine || []), ...(feedEvents || [])];
@@ -170,30 +179,22 @@ export function CreateFlowScreen() {
         }
       }
 
-      if (!eventEndTime.trim()) {
-        setTimeError('Horário de fim é obrigatório.');
-        hasValidationError = true;
-      } else if (!validateTime(eventEndTime).valid) {
-        setTimeError(validateTime(eventEndTime).error);
-        hasValidationError = true;
-      }
+      const startValue = eventTime.trim();
+      const endValue = eventEndTime.trim();
+      const startValidation = startValue ? validateTime(startValue) : { valid: false, error: 'Horário de início é obrigatório.' };
+      const endValidation = endValue ? validateTime(endValue) : { valid: false, error: 'Horário de fim é obrigatório.' };
 
-      if (eventTime && eventEndTime && eventTime >= eventEndTime) {
+      if (!startValidation.valid) {
+        setTimeError(startValidation.error);
+        hasValidationError = true;
+      } else if (!endValidation.valid) {
+        setTimeError(endValidation.error);
+        hasValidationError = true;
+      } else if (startValue >= endValue) {
         setTimeError('O horário de fim deve ser depois do início.');
         hasValidationError = true;
-      }
-
-      if (!eventTime.trim()) {
-        setTimeError('Horário do evento é obrigatório.');
-        hasValidationError = true;
       } else {
-        const tVal = validateTime(eventTime);
-        if (!tVal.valid) {
-          setTimeError(tVal.error);
-          hasValidationError = true;
-        } else {
-          setTimeError('');
-        }
+        setTimeError('');
       }
 
       if (!cep.trim() || !venueAddress) {
@@ -208,6 +209,11 @@ export function CreateFlowScreen() {
       } else {
         setLocationError('');
       }
+    }
+
+    if (visibility === 'selected' && selectedFollowerIds.length === 0) {
+      hasValidationError = true;
+      setMessage('Escolha pelo menos um seguidor para o conteúdo privado.');
     }
 
     if (hasValidationError) {
@@ -230,6 +236,8 @@ export function CreateFlowScreen() {
         venueState: venueAddress?.uf || undefined,
         addressNumber: addressNumber.trim() || undefined,
         mentionedEventId: mentionedEventId || undefined,
+        visibility,
+        audienceUserIds: visibility === 'selected' ? selectedFollowerIds : undefined,
       });
 
       // Redireciona para o Início após criar com sucesso
@@ -333,18 +341,6 @@ export function CreateFlowScreen() {
             />
 
             <FormInput
-              label="Horário de fim"
-              required
-              mask="time"
-              value={eventEndTime}
-              onChangeText={setEventEndTime}
-              placeholder="HH:MM"
-              leftIcon="clock-end"
-              error={timeError}
-              helperText="Informe quando o evento ou apresentação termina."
-            />
-
-            <FormInput
               label="Horário de início"
               required
               mask="time"
@@ -366,6 +362,23 @@ export function CreateFlowScreen() {
                   if (!v.valid) setTimeError(v.error);
                 }
               }}
+            />
+
+            <FormInput
+              label="Horário de fim"
+              required
+              mask="time"
+              value={eventEndTime}
+              onChangeText={(val) => {
+                setEventEndTime(val);
+                if (timeError && eventTime && validateTime(val).valid) {
+                  setTimeError(eventTime >= val ? 'O horário de fim deve ser depois do início.' : '');
+                }
+              }}
+              placeholder="HH:MM"
+              leftIcon="clock-end"
+              error={timeError}
+              helperText="Informe quando o evento ou apresentação termina."
             />
 
             <FormInput
@@ -397,9 +410,9 @@ export function CreateFlowScreen() {
         ) : null}
 
         {/* Mencionar Evento no Post */}
-        {mode === 'post' ? (
+        {mode === 'post' || mode === 'presentation' ? (
           <View style={{ marginBottom: 16 }}>
-            <Text style={authStyles.fieldLabel}>Mencionar Evento (opcional)</Text>
+            <Text style={authStyles.fieldLabel}>Vincular Evento (opcional)</Text>
             {selectedEvent ? (
               <View
                 style={{
@@ -524,6 +537,16 @@ export function CreateFlowScreen() {
             ) : null}
           </View>
         </View> : null}
+
+        {['event', 'presentation', 'post'].includes(mode) ? (
+          <VisibilitySelector
+            visibility={visibility}
+            onChange={setVisibility}
+            followers={followers}
+            selectedIds={selectedFollowerIds}
+            onToggleFollower={(id) => setSelectedFollowerIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id])}
+          />
+        ) : null}
 
         {message ? (
           <View
