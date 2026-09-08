@@ -1063,6 +1063,7 @@ export function makeRepository(db) {
     async listAvailablePresentations(userId) {
       const presentations = await many(`
         SELECT p.id AS post_id, p.presentation_id, p.title, p.content, p.created_at,
+          p.event_date, p.event_end_time, p.mentioned_event_id,
           u.id AS author_id, u.name AS author_name, u.avatar AS author_avatar,
           'presentation' AS type
         FROM posts p
@@ -1128,7 +1129,7 @@ export function makeRepository(db) {
 
     // --- RATINGS WITH AUTO SPEAKER & PRESENTATION RESOLUTION ---
     async createRating(raterId, payload) {
-      let post = payload.postId ? await one(`SELECT id,author_id,type,presentation_id,title FROM posts WHERE id=$1`, [payload.postId]) : null;
+      let post = payload.postId ? await one(`SELECT id,author_id,type,presentation_id,title,event_date,event_end_time FROM posts WHERE id=$1`, [payload.postId]) : null;
       let presentationId = payload.presentationId || post?.presentation_id;
 
       // If post exists without presentation_id, auto-link it

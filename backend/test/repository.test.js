@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, beforeEach } from 'vitest';
 import { newDb } from 'pg-mem';
 import bcrypt from 'bcryptjs';
@@ -10,6 +13,14 @@ function testDb() {
     name: 'gen_random_uuid',
     impure: true,
     implementation: () => crypto.randomUUID(),
+  });
+  mem.public.registerFunction({
+    name: 'nullif',
+    implementation: (value, other) => value === other ? null : value,
+  });
+  mem.public.registerFunction({
+    name: 'left',
+    implementation: (value, length) => String(value || '').slice(0, Number(length || 0)),
   });
   mem.public.none(`
     CREATE TABLE users (
@@ -73,6 +84,31 @@ function testDb() {
   const { Pool } = mem.adapters.createPg();
   return new Pool();
 }
+
+it('applies migration schema for visibility, audience and notification targets', async () => {
+  const mem = newDb();
+  mem.public.registerFunction({
+    name: 'gen_random_uuid',
+    impure: true,
+    implementation: () => crypto.randomUUID(),
+  });
+
+  const migrationDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+  const migrationFiles = (await fs.readdir(migrationDir)).filter((file) => file.endsWith('.sql')).sort();
+  for (const file of migrationFiles) {
+    const sql = (await fs.readFile(path.join(migrationDir, file), 'utf8')).replace(/CREATE EXTENSION IF NOT EXISTS pgcrypto;?/gi, '');
+    await mem.public.none(sql);
+  }
+
+  const visible = await mem.query(`SELECT column_name FROM information_schema.columns WHERE table_name='events' AND column_name='visibility'`);
+  expect(visible.rows.some((row) => row.column_name === 'visibility')).toBe(true);
+
+  const contentAudience = await mem.query(`SELECT to_regclass('public.content_audience') AS exists`);
+  expect(contentAudience.rows[0].exists).toBe('public.content_audience');
+
+  const notificationTargets = await mem.query(`SELECT column_name FROM information_schema.columns WHERE table_name='notifications' AND column_name='target_type'`);
+  expect(notificationTargets.rows.some((row) => row.column_name === 'target_type')).toBe(true);
+});
 
 describe('Meets persistence and features', () => {
   let db, repo, user, other;
