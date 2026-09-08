@@ -99,3 +99,6 @@ A migração `008_visibility_sharing_notifications_calendar.sql` repara instala�
 - calendário de eventos/apresentações.
 
 A foto do cadastro é opcional e o horário de início é validado para ficar antes do horário de fim.
+
+- avaliações públicas ou anônimas; ambas entram nos cálculos das médias.
+- os seis critérios de apresentação são persistidos e agregados.

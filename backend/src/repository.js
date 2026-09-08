@@ -779,7 +779,7 @@ export function makeRepository(db) {
       }
     },
 
-    async createEventRating(userId, { eventId, stars, comment }) {
+    async createEventRating(userId, { eventId, stars, comment, visibility = 'public' }) {
       const event = await one(`SELECT id,title,author_id,event_date,event_end_time FROM events WHERE id=$1`, [eventId]);
       const participant = await one(`SELECT 1 FROM event_participants WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
       if (!event || !participant || !hasEnded(event.event_date, event.event_end_time)) {
@@ -787,11 +787,24 @@ export function makeRepository(db) {
         error.code = 'FORBIDDEN';
         throw error;
       }
-      return one(`INSERT INTO event_ratings(event_id,rater_id,stars,comment)
-        VALUES($1,$2,$3,$4)
-        ON CONFLICT(event_id,rater_id) DO UPDATE SET stars=EXCLUDED.stars,comment=EXCLUDED.comment,updated_at=NOW()
-        RETURNING id,event_id,rater_id,stars,comment,created_at,updated_at`,
-        [eventId, userId, stars, comment || '']);
+      return one(`INSERT INTO event_ratings(event_id,rater_id,stars,comment,visibility)
+        VALUES($1,$2,$3,$4,$5)
+        ON CONFLICT(event_id,rater_id) DO UPDATE SET stars=EXCLUDED.stars,comment=EXCLUDED.comment,visibility=EXCLUDED.visibility,updated_at=NOW()
+        RETURNING id,event_id,rater_id,stars,comment,visibility,created_at,updated_at`,
+        [eventId, userId, stars, comment || '', visibility === 'anonymous' ? 'anonymous' : 'public']);
+    },
+
+    async getEventRatingSummary(eventId) {
+      const allRatings = await many(`SELECT er.stars, er.comment, er.visibility, er.created_at, u.name AS rater_name
+        FROM event_ratings er JOIN users u ON u.id=er.rater_id
+        WHERE er.event_id=$1 ORDER BY er.created_at DESC`, [eventId]);
+      const totalRatings = allRatings.length;
+      const averageStars = totalRatings ? Number((allRatings.reduce((sum, r) => sum + Number(r.stars || 0), 0) / totalRatings).toFixed(1)) : 0;
+      return {
+        totalRatings,
+        averageStars,
+        recentRatings: allRatings.slice(0, 10).map((r) => ({ ...r, rater_name: r.visibility === 'anonymous' ? 'Anônimo' : r.rater_name })),
+      };
     },
 
     async listNotifications(userId) {
@@ -1178,12 +1191,12 @@ export function makeRepository(db) {
 
       const skills = payload.includeSpeakerSkills ? safeSkills(payload.skills) : {};
       const row = await one(`INSERT INTO presentation_ratings
-        (presentation_id,post_id,rater_id,speaker_id,stars,skills,comment)
-        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)
+        (presentation_id,post_id,rater_id,speaker_id,stars,skills,comment,visibility)
+        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
         ON CONFLICT(presentation_id,rater_id,speaker_id)
-        DO UPDATE SET stars=EXCLUDED.stars,skills=CASE WHEN EXCLUDED.skills <> '{}'::jsonb THEN EXCLUDED.skills ELSE presentation_ratings.skills END,comment=EXCLUDED.comment,updated_at=NOW()
-        RETURNING id,presentation_id,post_id,rater_id,speaker_id,stars,skills,comment,created_at,updated_at`,
-        [presentationId, post?.id || null, raterId, speaker.id, payload.stars, JSON.stringify(skills), payload.comment || '']);
+        DO UPDATE SET stars=EXCLUDED.stars,skills=EXCLUDED.skills,comment=EXCLUDED.comment,visibility=EXCLUDED.visibility,updated_at=NOW()
+        RETURNING id,presentation_id,post_id,rater_id,speaker_id,stars,skills,comment,visibility,created_at,updated_at`,
+        [presentationId, post?.id || null, raterId, speaker.id, payload.stars, JSON.stringify(skills), payload.comment || '', payload.visibility === 'anonymous' ? 'anonymous' : 'public']);
 
       await addHistory(raterId, {
         type: 'rating',
@@ -1226,8 +1239,8 @@ export function makeRepository(db) {
       const values = Object.values(averageSkills);
       const overall = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0;
 
-      const recent = await many(`SELECT pr.id, pr.stars, pr.comment, pr.created_at,
-        p.title AS presentation_title, u.name AS rater_name
+      const recent = await many(`SELECT pr.id, pr.stars, pr.comment, pr.visibility, pr.created_at,
+        p.title AS presentation_title, CASE WHEN pr.visibility='anonymous' THEN 'Anônimo' ELSE u.name END AS rater_name
         FROM presentation_ratings pr
         LEFT JOIN posts p ON p.id=pr.post_id
         JOIN users u ON u.id=pr.rater_id

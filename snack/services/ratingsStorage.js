@@ -10,9 +10,10 @@ export async function savePresentationRating(payload) {
     postId: payload.postId || undefined,
     presentationId: payload.presentationId || undefined,
     stars: payload.stars,
+    visibility: payload.visibility || 'public',
     speakerId: payload.speakerId || undefined,
-    includeSpeakerSkills: Boolean(payload.includeSpeakerSkills),
-    skills: payload.includeSpeakerSkills ? payload.skills : undefined,
+    includeSpeakerSkills: true,
+    skills: { ...buildInitialSkillScores(), ...(payload.skills || {}) },
     comment: payload.comment || '',
   });
 }

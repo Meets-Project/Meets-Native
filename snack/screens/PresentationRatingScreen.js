@@ -76,7 +76,7 @@ export function PresentationRatingScreen() {
 
   const defaultSpeakerId = params.selectedSpeakerId || params.speakerId || speakers[0]?.id || '';
   const [stars, setStars] = useState(1);
-  const [includeSpeakerSkills, setIncludeSpeakerSkills] = useState(false);
+  const [visibility, setVisibility] = useState('public');
   const [selectedSpeakerId, setSelectedSpeakerId] = useState(defaultSpeakerId);
   const [skillScoresBySpeaker, setSkillScoresBySpeaker] = useState(() => buildSkillMap(speakers));
   const [comment, setComment] = useState('');
@@ -189,7 +189,7 @@ export function PresentationRatingScreen() {
       return;
     }
 
-    if (includeSpeakerSkills && !selectedSpeaker) {
+    if (!selectedSpeaker) {
       setFeedback('Selecione um apresentador para avaliar as habilidades.');
       setIsSuccess(false);
       return;
@@ -205,7 +205,8 @@ export function PresentationRatingScreen() {
         presentationId: finalPresId || undefined,
         presentationTitle: selectedTitle || 'Apresentação',
         stars,
-        includeSpeakerSkills,
+        includeSpeakerSkills: true,
+        visibility,
         speakerId: selectedSpeaker?.id || undefined,
         speakerName: selectedSpeaker?.name || '',
         skills: selectedSkills,
@@ -332,21 +333,28 @@ export function PresentationRatingScreen() {
             })}
           </View>
 
-          <TouchableOpacity
-            style={screenStyles.inlineToggle}
-            onPress={() => setIncludeSpeakerSkills((current) => !current)}
-          >
-            <MaterialCommunityIcons
-              name={includeSpeakerSkills ? 'checkbox-marked' : 'checkbox-blank-outline'}
-              size={22}
-              color={includeSpeakerSkills ? colors.primary : colors.textMuted}
-            />
-            <Text style={screenStyles.rowTitle}>Avaliar habilidades do apresentador também</Text>
-          </TouchableOpacity>
+          <View style={{ marginTop: 14 }}>
+            <Text style={screenStyles.rowTitle}>Critérios da avaliação</Text>
+            <Text style={screenStyles.rowSubtitle}>Os 6 critérios fazem parte da avaliação e entram na média de habilidades.</Text>
+          </View>
+
+          <View style={{ marginTop: 14 }}>
+            <Text style={screenStyles.rowTitle}>Visibilidade da avaliação</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              {['public', 'anonymous'].map((option) => {
+                const active = visibility === option;
+                return (
+                  <TouchableOpacity key={option} onPress={() => setVisibility(option)} style={{ flex: 1, padding: 11, borderRadius: 10, borderWidth: 1, borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primarySoft : colors.surface }}>
+                    <Text style={{ textAlign: 'center', fontWeight: '800', color: active ? colors.primary : colors.text }}>{option === 'public' ? '👁️ Pública' : '🕵️ Anônima'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         </View>
       ) : null}
 
-      {includeSpeakerSkills && selectedSpeaker ? (
+      {selectedSpeaker ? (
         <View style={screenStyles.sectionCard}>
           <Text style={screenStyles.sectionTitle}>Habilidades de {selectedSpeaker.name}</Text>
           <Text style={screenStyles.rowSubtitle}>Score geral: {speakerOverall} / 99</Text>

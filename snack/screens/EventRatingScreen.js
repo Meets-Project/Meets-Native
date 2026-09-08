@@ -4,7 +4,7 @@ import { useRoute } from '@react-navigation/native';
 import { screenStyles } from '../styles/screenStyles';
 import { colors } from '../styles/colors';
 import { AnimatedPressable } from '../components/AnimatedPressable';
-import { createEventRating } from '../services/api';
+import { createEventRating, getEventRatingSummary } from '../services/api';
 
 export function EventRatingScreen() {
   const route = useRoute();
@@ -12,6 +12,8 @@ export function EventRatingScreen() {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
+  const [visibility, setVisibility] = useState('public');
+  const [summary, setSummary] = useState(null);
 
   const handleSubmit = async () => {
     if (rating < 1 || rating > 5) {
@@ -22,7 +24,10 @@ export function EventRatingScreen() {
     if (!eventId) return Alert.alert('Evento não encontrado', 'Abra a avaliação pela notificação do evento.');
     setBusy(true);
     try {
-      await createEventRating({ eventId, stars: rating, comment });
+      const updated = await createEventRating({ eventId, stars: rating, comment, visibility });
+      setSummary(updated);
+      const fresh = await getEventRatingSummary(eventId).catch(() => null);
+      if (fresh) setSummary(fresh);
       Alert.alert('Avaliação enviada', `Você avaliou este evento com ${rating} estrela(s).`);
       setComment('');
       setRating(0);
@@ -58,6 +63,21 @@ export function EventRatingScreen() {
           {rating > 0 ? `${rating} de 5 estrelas` : 'Selecione uma nota'}
         </Text>
 
+
+        <View style={{ marginTop: 18 }}>
+          <Text style={{ fontWeight: '800', color: colors.text }}>Visibilidade da avaliação</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            {['public', 'anonymous'].map((option) => {
+              const active = visibility === option;
+              return (
+                <AnimatedPressable key={option} onPress={() => setVisibility(option)} style={{ flex: 1, padding: 11, borderRadius: 10, borderWidth: 1, borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primarySoft : colors.surface }}>
+                  <Text style={{ textAlign: 'center', fontWeight: '800', color: active ? colors.primary : colors.text }}>{option === 'public' ? '👁️ Pública' : '🕵️ Anônima'}</Text>
+                </AnimatedPressable>
+              );
+            })}
+          </View>
+        </View>
+
         <TextInput
           value={comment}
           onChangeText={setComment}
@@ -76,6 +96,12 @@ export function EventRatingScreen() {
             textAlignVertical: 'top',
           }}
         />
+
+        {summary ? (
+          <View style={{ marginTop: 14, padding: 12, borderRadius: 10, backgroundColor: colors.surfaceSoft }}>
+            <Text style={{ fontWeight: '800', color: colors.text }}>Média atual: ⭐ {Number(summary.averageStars || 0).toFixed(1)} ({summary.totalRatings || 0})</Text>
+          </View>
+        ) : null}
 
         <AnimatedPressable
           style={{

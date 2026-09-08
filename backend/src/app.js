@@ -500,16 +500,17 @@ app.post('/ratings/presentations', requireAuth, async (req, res, next) => {
       postId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
       presentationId: z.string().trim().min(1).max(160).optional().or(z.literal('')).transform(v => v || undefined),
       stars: z.coerce.number().min(1).max(5),
+      visibility: z.enum(['public', 'anonymous']).default('public'),
       speakerId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
       includeSpeakerSkills: z.boolean().optional(),
       skills: z.object({
-        clarity: z.coerce.number().min(0).max(99).optional(),
-        content: z.coerce.number().min(0).max(99).optional(),
-        engagement: z.coerce.number().min(0).max(99).optional(),
-        storytelling: z.coerce.number().min(0).max(99).optional(),
-        timing: z.coerce.number().min(0).max(99).optional(),
-        visuals: z.coerce.number().min(0).max(99).optional(),
-      }).optional(),
+        clarity: z.coerce.number().min(0).max(99),
+        content: z.coerce.number().min(0).max(99),
+        engagement: z.coerce.number().min(0).max(99),
+        storytelling: z.coerce.number().min(0).max(99),
+        timing: z.coerce.number().min(0).max(99),
+        visuals: z.coerce.number().min(0).max(99),
+      }),
       comment: z.string().max(1000).optional(),
     }).refine(v => v.postId || v.presentationId, { message: 'Apresentação não informada.' });
 
@@ -522,6 +523,7 @@ app.post('/ratings/events', requireAuth, async (req, res, next) => {
   try {
     const data = z.object({
       eventId: z.string().uuid(),
+      visibility: z.enum(['public', 'anonymous']).default('public'),
       stars: z.coerce.number().min(1).max(5),
       comment: z.string().max(1000).optional(),
     }).parse(req.body);
@@ -531,6 +533,10 @@ app.post('/ratings/events', requireAuth, async (req, res, next) => {
 
 app.get('/ratings/speakers/:speakerId', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.getSpeakerRatingSummary(req.params.speakerId) }); } catch (e) { next(e); }
+});
+
+app.get('/ratings/events/:eventId', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await repo.getEventRatingSummary(req.params.eventId) }); } catch (e) { next(e); }
 });
 
 

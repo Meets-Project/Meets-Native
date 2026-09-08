@@ -137,6 +137,10 @@ export async function createPresentationRating(payload) {
   })).data;
 }
 
+export async function getEventRatingSummary(eventId) {
+  return (await requestJson(`/ratings/events/${encodeURIComponent(eventId)}`)).data;
+}
+
 export async function getSpeakerRatingSummary(speakerId) {
   return (await requestJson(`/ratings/speakers/${encodeURIComponent(speakerId)}`)).data;
 }
