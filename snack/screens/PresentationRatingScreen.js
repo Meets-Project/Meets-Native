@@ -41,7 +41,14 @@ export function PresentationRatingScreen() {
   React.useEffect(() => {
     let active = true;
     setLoadingAvailable(true);
-    getAvailablePresentations().then((list) => { if (active) setAvailableList(Array.isArray(list) ? list : []); }).catch(() => {}).finally(() => { if (active) setLoadingAvailable(false); });
+    getAvailablePresentations().then((list) => {
+      if (!active) return;
+      const items = Array.isArray(list) ? list : [];
+      setAvailableList(items);
+      if (!params.postId && !params.presentationId && items.length > 0) {
+        handleSelectPresentation(items[0]);
+      }
+    }).catch(() => {}).finally(() => { if (active) setLoadingAvailable(false); });
     if (params.postId) {
       getSharedContent('presentation', params.postId, params.shareToken || '').then((item) => {
         if (!active || !item) return;
