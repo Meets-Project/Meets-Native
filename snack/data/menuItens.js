@@ -1,5 +1,6 @@
 export const menuItems = [
   { id: 'profile', label: 'Meu Perfil', icon: 'account-circle' },
+  { id: 'Ranking', label: 'Ranking de apresentadores', icon: 'trophy-outline' },
   { id: 'favorites', label: 'Favoritos', icon: 'heart' },
   { id: 'history', label: 'Histórico', icon: 'history' },
   { id: 'saves', label: 'Salvos', icon: 'bookmark' },

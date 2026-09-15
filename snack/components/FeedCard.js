@@ -139,6 +139,27 @@ export function FeedCard({ item, onRefresh }) {
     }
   }
 
+  function handleRatePresentation() {
+    navigation.navigate('PresentationRating', {
+      postId: item.id,
+      presentationId: item.presentation_id || `presentation-${item.id}`,
+      presentationTitle: item.title || 'Apresentação',
+      speakers,
+    });
+  }
+
+  function handleRateSpeaker(speaker) {
+    navigation.navigate('PresentationRating', {
+      postId: item.id,
+      presentationId: item.presentation_id || `presentation-${item.id}`,
+      presentationTitle: item.title || 'Apresentação',
+      speakers,
+      selectedSpeakerId: speaker.id,
+      speakerId: speaker.id,
+      speakerName: speaker.name,
+    });
+  }
+
   return (
     <View style={feedCardStyles.card}>
       {/* Card Header */}
@@ -352,6 +373,15 @@ export function FeedCard({ item, onRefresh }) {
                   <Text style={feedCardStyles.speakerName}>{speaker.name}</Text>
                 </TouchableOpacity>
               </View>
+              {contentEnded ? (
+                <TouchableOpacity
+                  style={feedCardStyles.speakerRateButton}
+                  onPress={() => handleRateSpeaker(speaker)}
+                >
+                  <MaterialCommunityIcons name="star-outline" size={15} color="#ffffff" />
+                  <Text style={feedCardStyles.speakerRateButtonText}>Avaliar apresentador</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ))}
         </View>
@@ -419,7 +449,7 @@ export function FeedCard({ item, onRefresh }) {
           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 10, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary }}
           onPress={() => isEvent
             ? navigation.navigate('EventRating', { eventId: item.id })
-            : navigation.navigate('PresentationRating', { postId: item.id, presentationId: item.presentation_id || `presentation-${item.id}`, presentationTitle: item.title || 'Apresentação', speakers })}
+            : handleRatePresentation()}
         >
           <MaterialCommunityIcons name="star-circle-outline" size={20} color={colors.primary} />
           <Text style={{ color: colors.primary, fontWeight: '900' }}>Avaliar {isEvent ? 'evento' : 'apresentação'}</Text>

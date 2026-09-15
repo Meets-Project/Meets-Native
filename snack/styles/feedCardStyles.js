@@ -120,10 +120,14 @@ export const feedCardStyles = StyleSheet.create({
   speakerAvatar: { fontSize: 22, marginRight: 8 },
   speakerName: { fontSize: 13, fontWeight: '700', color: colors.text },
   speakerRateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     borderRadius: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     backgroundColor: colors.primary,
+    maxWidth: 145,
   },
-  speakerRateButtonText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  speakerRateButtonText: { color: '#fff', fontSize: 11, fontWeight: '800', flexShrink: 1 },
 });
