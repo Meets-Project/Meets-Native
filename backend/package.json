@@ -10,7 +10,7 @@
     "test:watch": "vitest",
     "migrate": "node src/migrate.js",
     "start:production": "node src/server.js"
-  },meets_user
+  },
   "engines": {
     "node": ">=20"
   },
