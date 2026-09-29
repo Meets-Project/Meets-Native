@@ -18,7 +18,6 @@ snack/package-lock.json
 snack/.DS_Store
 snack/node_modules/
 snack/.expo/
-snack/dist/
 snack/web-build/
 snack/npm-debug.*
 snack/yarn-debug.*
