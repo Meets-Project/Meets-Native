@@ -27,15 +27,6 @@ export function ChatScreen() {
   const route = useRoute();
   const flatListRef = useRef(null);
 
-  // When the tab is pressed again while already on chat, reset to list view
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('tabPress', () => {
-      setActiveChat(null);
-      setMessages([]);
-    });
-    return unsubscribe;
-  }, [navigation]);
-
   const [currentUser, setCurrentUser] = useState(null);
   const [chats, setChats] = useState([]);
   const [loadingChats, setLoadingChats] = useState(true);
@@ -69,6 +60,21 @@ export function ChatScreen() {
       setLoadingChats(false);
     }
   }, []);
+
+  // Pressing Chat in the BottomNav always returns to the complete conversation list
+  // and refreshes it, including when Chat is already the active tab.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      setActiveChat(null);
+      setMessages([]);
+      setShowNewChat(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setLoadingChats(true);
+      loadChats();
+    });
+    return unsubscribe;
+  }, [navigation, loadChats]);
 
   useFocusEffect(
     useCallback(() => {

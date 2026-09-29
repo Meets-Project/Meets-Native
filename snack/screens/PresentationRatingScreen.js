@@ -183,9 +183,11 @@ export function PresentationRatingScreen() {
   }
 
   function handleSelectPresentation(item) {
-    const nextSpeakers = Array.isArray(item.speakers) ? item.speakers : [];
+    const nextSpeakers = Array.isArray(item.speakers) && item.speakers.length
+      ? item.speakers
+      : (item.author?.id ? [{ id: item.author.id, name: item.author.name || 'Apresentador', avatar: item.author.avatar || '🎤' }] : []);
     setSelectedPostId(item.postId || '');
-    setSelectedPresId(item.presentationId || '');
+    setSelectedPresId(item.presentationId || (item.postId ? `presentation-${item.postId}` : ''));
     setSelectedTitle(item.title || 'Apresentação');
     setRawSpeakers(nextSpeakers);
     setSelectedSpeakerId(nextSpeakers[0]?.id || '');

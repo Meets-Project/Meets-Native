@@ -36,7 +36,7 @@ export function FeedCard({ item, onRefresh }) {
 
   async function like() {
     try {
-      const r = await toggleLike(item.id);
+      const r = await toggleLike(item.id, isEvent ? 'event' : 'post');
       setLikes(Number(r.likes || 0));
       setIsLiked((prev) => !prev);
     } catch (e) {

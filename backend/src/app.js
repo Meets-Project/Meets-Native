@@ -1,4 +1,6 @@
 import express from 'express';
+import crypto from 'node:crypto';
+import nodemailer from 'nodemailer';
 import cors from 'cors';
 import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
@@ -9,6 +11,46 @@ import { optionalAuth, requireAuth, signToken } from './auth.js';
 
 const app = express();
 const repo = makeRepository({ query });
+
+function verificationToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+function verificationHash(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+function verificationMinutes() {
+  const n = Number(process.env.EMAIL_VERIFICATION_MINUTES || 30);
+  return Number.isFinite(n) && n > 0 ? n : 30;
+}
+function smtpConfigured() {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+function mailTransport() {
+  if (!smtpConfigured()) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 465),
+    secure: String(process.env.SMTP_SECURE || 'true') !== 'false',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+}
+async function sendVerificationMail(email, name, token) {
+  const transport = mailTransport();
+  if (!transport) {
+    const err = new Error('SMTP não configurado. Defina SMTP_HOST, SMTP_USER e SMTP_PASS no ambiente do backend.');
+    err.code = 'SMTP_NOT_CONFIGURED';
+    throw err;
+  }
+  const minutes = verificationMinutes();
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  await transport.sendMail({
+    from,
+    to: email,
+    subject: 'Confirme seu e-mail no Meets',
+    text: `Olá, ${name}! Seu código de verificação do Meets é: ${token}. Ele expira em ${minutes} minutos.`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Confirme seu e-mail no Meets</h2><p>Olá, ${name}!</p><p>Use este código para confirmar seu e-mail:</p><div style="font-size:30px;font-weight:800;letter-spacing:6px;padding:16px;background:#f4f4f4;border-radius:10px;text-align:center">${token}</div><p>O código expira em ${minutes} minutos.</p></div>`,
+  });
+}
 
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
@@ -105,12 +147,27 @@ app.post('/auth/signup', async (req, res, next) => {
     if (exists) return res.status(409).json({ message: 'E-mail já cadastrado.' });
     const passwordHash = await bcrypt.hash(data.password, 12);
     const user = await repo.createUser({ name: data.name, email: data.email.toLowerCase(), passwordHash, avatar: data.avatar });
+    const token = verificationToken();
+    await query(
+      `UPDATE users SET email_verified=FALSE, email_verification_token_hash=$2,
+       email_verification_expires_at=NOW() + ($3 || ' minutes')::interval, updated_at=NOW()
+       WHERE id=$1`,
+      [user.id, verificationHash(token), String(verificationMinutes())]
+    );
+    let verificationEmailSent = false;
+    try {
+      await sendVerificationMail(user.email, user.name, token);
+      verificationEmailSent = true;
+    } catch (mailError) {
+      if (process.env.NODE_ENV === 'production') throw mailError;
+      console.warn(`SMTP não configurado; código de desenvolvimento para ${user.email}: ${token}`);
+    }
     await repo.updateSettings(user.id, {});
     await repo.createNotification(user.id, {
       title: 'Bem-vindo ao Meets',
       body: 'Sua conta foi criada e seus dados estão persistidos no PostgreSQL.',
     });
-    res.status(201).json({ data: { token: signToken(user), user } });
+    res.status(201).json({ data: { token: signToken(user), user: { ...user, email_verified: false }, verificationEmailSent } });
   } catch (e) { next(e); }
 });
 
@@ -126,6 +183,40 @@ app.post('/auth/login', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+app.post('/auth/send-verification', requireAuth, async (req, res, next) => {
+  try {
+    const user = await repo.getUser(req.auth.sub);
+    if (!user) return res.status(404).json({ message: 'Usuário não encontrado.' });
+    if (user.email_verified) return res.json({ data: { verified: true, message: 'E-mail já verificado.' } });
+    const token = verificationToken();
+    await query(
+      `UPDATE users SET email_verification_token_hash=$2,
+       email_verification_expires_at=NOW() + ($3 || ' minutes')::interval, updated_at=NOW()
+       WHERE id=$1`,
+      [user.id, verificationHash(token), String(verificationMinutes())]
+    );
+    await sendVerificationMail(user.email, user.name, token);
+    res.json({ data: { sent: true, expiresInMinutes: verificationMinutes() } });
+  } catch (e) { next(e); }
+});
+
+app.post('/auth/verify-email', requireAuth, async (req, res, next) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) return res.status(400).json({ message: 'Informe o código recebido por e-mail.' });
+    const row = await query(
+      `UPDATE users SET email_verified=TRUE, email_verification_token_hash=NULL,
+       email_verification_expires_at=NULL, updated_at=NOW()
+       WHERE id=$1 AND email_verification_token_hash=$2
+         AND email_verification_expires_at > NOW()
+       RETURNING id,email_verified`,
+      [req.auth.sub, verificationHash(token)]
+    );
+    if (!row.rows[0]) return res.status(400).json({ message: 'Código inválido ou expirado.' });
+    res.json({ data: { verified: true } });
+  } catch (e) { next(e); }
+});
+
 app.get('/users/me', requireAuth, async (req, res, next) => {
   try {
     const user = await repo.getUser(req.auth.sub);
@@ -137,6 +228,14 @@ app.get('/users/me', requireAuth, async (req, res, next) => {
 app.put('/users/me', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.updateUser(req.auth.sub, profileSchema.parse(req.body)) }); }
   catch (e) { next(e); }
+});
+
+app.get('/users/:id/public', requireAuth, async (req, res, next) => {
+  try {
+    const user = await repo.getPublicUser(req.params.id);
+    if (!user) return res.status(404).json({ message: 'Perfil não encontrado.' });
+    res.json({ data: user });
+  } catch (e) { next(e); }
 });
 
 app.get('/search', requireAuth, async (req, res, next) => {
@@ -332,6 +431,10 @@ app.delete('/comments/:id', requireAuth, async (req, res, next) => {
 
 app.post('/posts/:id/like', requireAuth, async (req, res, next) => {
   try { res.json({ data: await repo.toggleLike(req.auth.sub, req.params.id) }); } catch (e) { next(e); }
+});
+
+app.post('/events/:id/like', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await repo.toggleEventLike(req.auth.sub, req.params.id) }); } catch (e) { next(e); }
 });
 
 app.post('/posts/:id/save', requireAuth, async (req, res, next) => {
@@ -572,6 +675,7 @@ app.put('/settings', requireAuth, async (req, res, next) => {
 
 app.use((err, _req, res, _next) => {
   if (err instanceof z.ZodError) return res.status(400).json({ message: 'Dados inválidos.', details: err.issues });
+  if (err.code === 'SMTP_NOT_CONFIGURED') return res.status(503).json({ message: err.message });
   if (err.code === 'SELF_RATING') return res.status(400).json({ message: err.message });
   if (err.code === 'SPEAKER_NOT_LINKED') return res.status(400).json({ message: err.message });
   if (err.code === 'PRESENTATION_REQUIRED') return res.status(400).json({ message: err.message });

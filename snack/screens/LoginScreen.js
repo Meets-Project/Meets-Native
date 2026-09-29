@@ -56,8 +56,12 @@ export function LoginScreen() {
 
     setBusy(true);
     try {
-      await login(email.trim(), password);
-      navigation.replace('MainTabs', { screen: 'home' });
+      const user = await login(email.trim(), password);
+      if (user && user.email_verified === false) {
+        navigation.replace('EmailVerification', { email: user.email || email.trim() });
+      } else {
+        navigation.replace('MainTabs', { screen: 'home' });
+      }
     } catch (e) {
       setMessage(e.message || 'Erro ao realizar login.');
     } finally {

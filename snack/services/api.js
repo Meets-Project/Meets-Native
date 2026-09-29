@@ -61,6 +61,7 @@ export async function verifyEmail(token) {
 }
 
 export async function getMe() { return (await requestJson('/users/me')).data; }
+export async function getPublicUser(userId) { return (await requestJson(`/users/${encodeURIComponent(userId)}/public`)).data; }
 export async function updateMe(payload) { return (await requestJson('/users/me', { method: 'PUT', body: JSON.stringify(payload) })).data; }
 export async function search(q) { return (await requestJson(`/search?q=${encodeURIComponent(q)}`)).data; }
 
@@ -130,7 +131,7 @@ export async function createEventRating(payload) {
 }
 export async function getSettings() { return (await requestJson('/settings')).data; }
 export async function updateSettings(payload) { return (await requestJson('/settings', { method: 'PUT', body: JSON.stringify(payload) })).data; }
-export async function toggleLike(id) { return (await requestJson(`/posts/${id}/like`, { method: 'POST' })).data; }
+export async function toggleLike(id, type = 'post') { return (await requestJson(type === 'event' ? `/events/${id}/like` : `/posts/${id}/like`, { method: 'POST' })).data; }
 export async function createPost(content, image) { return (await requestJson('/posts', { method: 'POST', body: JSON.stringify({ content, image }) })).data; }
 
 // --- RATINGS ---

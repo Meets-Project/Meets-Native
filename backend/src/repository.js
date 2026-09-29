@@ -83,7 +83,7 @@ export function makeRepository(db) {
     },
 
     async getUser(id) {
-      const user = await one(`SELECT id,name,email,role,city,address_number,avatar,bio,created_at,updated_at FROM users WHERE id=$1`, [id]);
+      const user = await one(`SELECT id,name,email,role,city,address_number,avatar,bio,email_verified,created_at,updated_at FROM users WHERE id=$1`, [id]);
       if (!user) return null;
       const [events, connections, ratings] = await Promise.all([
         one(`SELECT count(*)::int total FROM events WHERE author_id=$1`, [id]),
@@ -101,6 +101,27 @@ export function makeRepository(db) {
         events_count: Number(events?.total || 0),
         connections: Number(connections?.total || 0),
         rating: avgRating,
+        ratings_count: totalRatings,
+      };
+    },
+
+    async getPublicUser(id) {
+      const user = await one(`SELECT id,name,role,city,avatar,bio,created_at FROM users WHERE id=$1`, [id]);
+      if (!user) return null;
+      const [events, connections, ratings] = await Promise.all([
+        one(`SELECT count(*)::int total FROM events WHERE author_id=$1`, [id]),
+        one(`SELECT count(*)::int total FROM user_connections WHERE user_id=$1`, [id]),
+        many(`SELECT stars FROM presentation_ratings WHERE speaker_id=$1`, [id]),
+      ]);
+      const totalRatings = ratings.length;
+      const averageStars = totalRatings
+        ? Number((ratings.reduce((sum, x) => sum + Number(x.stars || 0), 0) / totalRatings).toFixed(1))
+        : 0;
+      return {
+        ...user,
+        events_count: Number(events?.total || 0),
+        connections: Number(connections?.total || 0),
+        rating: averageStars,
         ratings_count: totalRatings,
       };
     },
@@ -347,6 +368,7 @@ export function makeRepository(db) {
     async listFeed(userId = null, filter = 'all', limit = 50) {
       let savedPostSet = new Set();
       let likedPostSet = new Set();
+      let likedEventSet = new Set();
       let connectedSet = new Set();
       let savedEventSet = new Set();
       let partEventSet = new Set();
@@ -354,9 +376,10 @@ export function makeRepository(db) {
       let selectedEventSet = new Set();
 
       if (userId) {
-        const [savedPosts, likedPosts, connections, savedEvents, partEvents, selectedPosts, selectedEvents] = await Promise.all([
+        const [savedPosts, likedPosts, likedEvents, connections, savedEvents, partEvents, selectedPosts, selectedEvents] = await Promise.all([
           many(`SELECT post_id FROM saved_posts WHERE user_id=$1`, [userId]),
           many(`SELECT post_id FROM post_likes WHERE user_id=$1`, [userId]),
+          many(`SELECT event_id FROM event_likes WHERE user_id=$1`, [userId]),
           many(`SELECT connected_user_id FROM user_connections WHERE user_id=$1`, [userId]),
           many(`SELECT event_id FROM saved_events WHERE user_id=$1`, [userId]),
           many(`SELECT event_id FROM event_participants WHERE user_id=$1`, [userId]),
@@ -365,6 +388,7 @@ export function makeRepository(db) {
         ]);
         savedPostSet = new Set((savedPosts || []).map(r => r.post_id));
         likedPostSet = new Set((likedPosts || []).map(r => r.post_id));
+        likedEventSet = new Set((likedEvents || []).map(r => r.event_id));
         connectedSet = new Set((connections || []).map(r => r.connected_user_id));
         savedEventSet = new Set((savedEvents || []).map(r => r.event_id));
         partEventSet = new Set((partEvents || []).map(r => r.event_id));
@@ -444,9 +468,11 @@ export function makeRepository(db) {
           'event'::varchar AS type,''::varchar AS presentation_id,
           u.id author_id, u.name author_name, u.avatar author_avatar,
           e.event_date,e.event_time,e.event_end_time,e.location,e.visibility,e.share_token,
-          COALESCE(c.comments_count, 0)::int AS comments_count
+          COALESCE(c.comments_count, 0)::int AS comments_count,
+          COALESCE(l.likes_count, 0)::int AS likes_count
         FROM events e JOIN users u ON u.id=e.author_id
         LEFT JOIN (SELECT event_id, count(*)::int AS comments_count FROM post_comments GROUP BY event_id) c ON c.event_id=e.id
+        LEFT JOIN (SELECT event_id, count(*)::int AS likes_count FROM event_likes GROUP BY event_id) l ON l.event_id=e.id
         ORDER BY e.created_at DESC LIMIT $1`, [limit]),
         many(`SELECT event_id, count(*)::int AS count FROM event_participants GROUP BY event_id`),
       ]);
@@ -474,6 +500,8 @@ export function makeRepository(db) {
         share_token: e.share_token,
         participants_count: partCountMap[e.id] || 0,
         comments_count: Number(e.comments_count || 0),
+        likes: Number(e.likes_count || 0),
+        is_liked: likedEventSet.has(e.id),
         is_participating: partEventSet.has(e.id),
         is_saved: savedEventSet.has(e.id),
         is_connected: connectedSet.has(e.author_id),
@@ -601,6 +629,25 @@ export function makeRepository(db) {
       }
       return one(`UPDATE posts SET likes=(SELECT count(*) FROM post_likes WHERE post_id=$1)
         WHERE id=$1 RETURNING id,likes`, [postId]);
+    },
+
+    async toggleEventLike(userId, eventId) {
+      if (!(await canView('event', eventId, userId))) {
+        const error = new Error('Você não tem permissão para interagir com este evento.');
+        error.code = 'FORBIDDEN';
+        throw error;
+      }
+      const existing = await one(`SELECT 1 FROM event_likes WHERE user_id=$1 AND event_id=$2`, [userId, eventId]);
+      if (existing) {
+        await db.query(`DELETE FROM event_likes WHERE user_id=$1 AND event_id=$2`, [userId, eventId]);
+        await addHistory(userId, { type: 'event_like_removed', title: 'Removeu uma curtida', subtitle: `Evento ${eventId}` });
+      } else {
+        await db.query(`INSERT INTO event_likes(user_id,event_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, [userId, eventId]);
+        await addHistory(userId, { type: 'event_like', title: 'Curtiu um evento', subtitle: `Evento ${eventId}` });
+      }
+      return one(`SELECT $1::uuid AS id,
+        (SELECT count(*)::int FROM event_likes WHERE event_id=$1) AS likes,
+        EXISTS(SELECT 1 FROM event_likes WHERE event_id=$1 AND user_id=$2) AS is_liked`, [eventId, userId]);
     },
 
     // --- SAVED POSTS & EVENTS ---
@@ -1166,7 +1213,12 @@ export function makeRepository(db) {
       let targetSpeakerId = payload.speakerId;
       if (!targetSpeakerId) {
         const speakerRow = await one(`SELECT speaker_id FROM presentation_speakers WHERE presentation_id=$1 LIMIT 1`, [presentationId]);
-        targetSpeakerId = speakerRow?.speaker_id || post?.author_id || raterId;
+        targetSpeakerId = speakerRow?.speaker_id || post?.author_id;
+        if (!targetSpeakerId && presentationId.startsWith('presentation-event-')) {
+          const eventId = presentationId.replace('presentation-event-', '');
+          const eventRow = await one(`SELECT author_id FROM events WHERE id=$1`, [eventId]);
+          targetSpeakerId = eventRow?.author_id;
+        }
       }
 
       if (!targetSpeakerId) {
