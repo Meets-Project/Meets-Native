@@ -159,15 +159,23 @@ app.post('/auth/signup', async (req, res, next) => {
       await sendVerificationMail(user.email, user.name, token);
       verificationEmailSent = true;
     } catch (mailError) {
+      // O cadastro não deve ficar bloqueado em desenvolvimento quando o SMTP
+      // externo ainda não foi configurado. O código é devolvido apenas em
+      // ambiente de desenvolvimento/teste para permitir validar o fluxo.
       if (process.env.NODE_ENV === 'production') throw mailError;
-      console.warn(`SMTP não configurado; código de desenvolvimento para ${user.email}: ${token}`);
+      console.warn(`SMTP indisponível; código de desenvolvimento para ${user.email}: ${token}`);
     }
     await repo.updateSettings(user.id, {});
     await repo.createNotification(user.id, {
       title: 'Bem-vindo ao Meets',
       body: 'Sua conta foi criada e seus dados estão persistidos no PostgreSQL.',
     });
-    res.status(201).json({ data: { token: signToken(user), user: { ...user, email_verified: false }, verificationEmailSent } });
+    res.status(201).json({ data: {
+      token: signToken(user),
+      user: { ...user, email_verified: false },
+      verificationEmailSent,
+      ...(verificationEmailSent ? {} : { developmentVerificationToken: process.env.NODE_ENV === 'production' ? undefined : token }),
+    } });
   } catch (e) { next(e); }
 });
 
@@ -195,8 +203,15 @@ app.post('/auth/send-verification', requireAuth, async (req, res, next) => {
        WHERE id=$1`,
       [user.id, verificationHash(token), String(verificationMinutes())]
     );
-    await sendVerificationMail(user.email, user.name, token);
-    res.json({ data: { sent: true, expiresInMinutes: verificationMinutes() } });
+    let sent = false;
+    try {
+      await sendVerificationMail(user.email, user.name, token);
+      sent = true;
+    } catch (mailError) {
+      if (process.env.NODE_ENV === 'production') throw mailError;
+      console.warn(`SMTP indisponível; código de desenvolvimento para ${user.email}: ${token}`);
+    }
+    res.json({ data: { sent, expiresInMinutes: verificationMinutes(), ...(sent ? {} : { developmentVerificationToken: token }) } });
   } catch (e) { next(e); }
 });
 

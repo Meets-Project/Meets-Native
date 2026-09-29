@@ -49,7 +49,7 @@ export async function login(email, password) {
 export async function signup(name, email, password, avatar) {
   const response = await requestJson('/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, password, avatar }) });
   await setToken(response.data.token);
-  return response.data.user;
+  return response.data;
 }
 
 export async function sendVerificationEmail() {

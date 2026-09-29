@@ -17,6 +17,7 @@ export function EmailVerificationScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const email = route.params?.email || '';
+  const developmentVerificationToken = route.params?.developmentVerificationToken || '';
 
   const [token, setToken] = useState('');
   const [tokenError, setTokenError] = useState('');
@@ -25,6 +26,7 @@ export function EmailVerificationScreen() {
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [developmentCode, setDevelopmentCode] = useState(developmentVerificationToken);
 
   // Send verification email automatically on mount
   useEffect(() => {
@@ -44,7 +46,10 @@ export function EmailVerificationScreen() {
     setSending(true);
     setMessage('');
     try {
-      await sendVerificationEmail();
+      const result = await sendVerificationEmail();
+      if (result?.developmentVerificationToken) {
+        setDevelopmentCode(result.developmentVerificationToken);
+      }
       setResendCooldown(60);
       if (!silent) {
         setMessage('E-mail reenviado! Verifique sua caixa de entrada.');
@@ -126,6 +131,14 @@ export function EmailVerificationScreen() {
           leftIcon="shield-key-outline"
           error={tokenError}
         />
+
+        {developmentCode ? (
+          <View style={{ backgroundColor: '#fff8e1', padding: 12, borderRadius: 8, marginBottom: 14, borderWidth: 1, borderColor: '#f2c94c' }}>
+            <Text style={{ fontWeight: '800', marginBottom: 4 }}>Código de desenvolvimento</Text>
+            <Text selectable style={{ fontSize: 18, fontWeight: '800', letterSpacing: 2 }}>{developmentCode}</Text>
+            <Text style={{ marginTop: 4, color: '#6b5b00' }}>SMTP não está configurado. Em produção, configure o SMTP para que este código seja enviado ao e-mail informado.</Text>
+          </View>
+        ) : null}
 
         {message ? (
           <View
