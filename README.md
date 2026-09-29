@@ -34,7 +34,7 @@ Meets-Native/
 docker compose up --build
 ```
 
-- **Frontend (Web):** `http://localhost:8080`
+- **Frontend (Web):** `https://meets-native.onrender.com/`
 - **Backend API:** `http://localhost:3334`
 - **Adminer (Banco):** `http://localhost:8081` (servidor: `postgres`, banco: `meets`, usuário: `postgres`, senha: `postgres`)
 
