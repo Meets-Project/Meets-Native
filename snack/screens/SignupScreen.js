@@ -107,7 +107,7 @@ export function SignupScreen() {
     setBusy(true);
     try {
       await signup(name.trim(), email.trim(), password, avatar || undefined);
-      navigation.replace('MainTabs', { screen: 'profile' });
+      navigation.replace('EmailVerification', { email: email.trim() });
     } catch (e) {
       setMessage(e.message || 'Erro ao criar conta.');
     } finally {

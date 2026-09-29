@@ -140,8 +140,32 @@ function EditorWeb({ sourceUri, onUse }) {
   const redoEdit=()=>{setRedo(s=>{if(!s.length)return s;const next=s[s.length-1];setUndo(u=>[...u.slice(-29),cloneState(state)]);setState(cloneState(next));return s.slice(0,-1);});setCropMode(false);};
   const reset=()=>{commit(INITIAL);setCropMode(false);setZoom(1);};
   const applyCrop=()=>{commit(s=>({...s,crop:{...cropBox}}));setCropMode(false);};
-  const beginCropDrag=e=>{e.preventDefault();const rect=e.currentTarget.getBoundingClientRect();dragRef.current={sx:e.clientX,sy:e.clientY,start:{...cropBox},rect};const move=ev=>{const dX=(ev.clientX-dragRef.current.sx)/rect.width*100,dY=(ev.clientY-dragRef.current.sy)/rect.height*100;setCropBox(c=>({...c,x:Math.max(0,Math.min(100-c.w,dragRef.current.start.x+dX)),y:Math.max(0,Math.min(100-c.h,dragRef.current.start.y+dY))}));};const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);};
-  return <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><View style={styles.preview}><canvas ref={sourceRef} style={styles.sourceCanvas}/><canvas ref={canvasRef} style={styles.canvas}/>{cropMode&&<View style={styles.cropOverlay} onStartShouldSetResponder={()=>true} onResponderGrant={beginCropDrag}><View style={[styles.cropBox,{left:`${cropBox.x}%`,top:`${cropBox.y}%`,width:`${cropBox.w}%`,height:`${cropBox.h}%`}]}><View style={styles.cropShade}/><View style={styles.cropHandle}><MaterialCommunityIcons name="cursor-move" size={20} color="#fff"/></View></View></View>}{busy&&<View style={styles.overlay}><ActivityIndicator size="large" color={colors.primary}/><Text style={styles.status}>Preparando editor...</Text></View>}</View>
+  const previewRef=useRef(null);
+  const beginCropDrag=useCallback(e=>{
+    e.preventDefault();
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    const rect=previewRef.current?previewRef.current.getBoundingClientRect():{width:1,height:1,left:0,top:0};
+    dragRef.current={sx:clientX,sy:clientY,start:{...cropBox},rect};
+    const move=ev=>{
+      const cx=ev.touches?ev.touches[0].clientX:ev.clientX;
+      const cy=ev.touches?ev.touches[0].clientY:ev.clientY;
+      const dX=(cx-dragRef.current.sx)/dragRef.current.rect.width*100;
+      const dY=(cy-dragRef.current.sy)/dragRef.current.rect.height*100;
+      setCropBox(c=>({...c,x:Math.max(0,Math.min(100-c.w,dragRef.current.start.x+dX)),y:Math.max(0,Math.min(100-c.h,dragRef.current.start.y+dY))}));
+    };
+    const up=()=>{
+      window.removeEventListener('mousemove',move);
+      window.removeEventListener('mouseup',up);
+      window.removeEventListener('touchmove',move);
+      window.removeEventListener('touchend',up);
+    };
+    window.addEventListener('mousemove',move);
+    window.addEventListener('mouseup',up);
+    window.addEventListener('touchmove',move,{passive:false});
+    window.addEventListener('touchend',up);
+  },[cropBox]);
+  return <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><View ref={previewRef} style={styles.preview}><canvas ref={sourceRef} style={styles.sourceCanvas}/><canvas ref={canvasRef} style={styles.canvas}/>{cropMode&&<div style={{position:'absolute',top:0,left:0,right:0,bottom:0,cursor:'crosshair'}} onMouseDown={beginCropDrag} onTouchStart={beginCropDrag}><div style={{position:'absolute',left:`${cropBox.x}%`,top:`${cropBox.y}%`,width:`${cropBox.w}%`,height:`${cropBox.h}%`,border:'2px solid #fff',backgroundColor:'rgba(255,255,255,0.06)',boxSizing:'border-box',cursor:'move'}}><div style={{position:'absolute',top:'-200%',left:'-200%',right:'-200%',bottom:'-200%',backgroundColor:'rgba(0,0,0,0.48)',zIndex:-1}}/><div style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',width:36,height:36,borderRadius:18,backgroundColor:colors.primary,display:'flex',alignItems:'center',justifyContent:'center'}}><MaterialCommunityIcons name="cursor-move" size={20} color="#fff"/></div></div></div>}{busy&&<View style={styles.overlay}><ActivityIndicator size="large" color={colors.primary}/><Text style={styles.status}>Preparando editor...</Text></View>}</View>
     {error?<View style={styles.errorBox}><Text style={styles.error}>{error}</Text><Text style={styles.errorHelp}>O editor não depende mais do módulo @opencvjs/web/Metro. O processamento é feito localmente no navegador.</Text></View>:null}
     <View style={styles.topTools}><TouchableOpacity disabled={!undo.length} onPress={undoEdit} style={[styles.action,!undo.length&&styles.disabled]}><MaterialCommunityIcons name="undo" size={18} color="#fff"/><Text style={styles.actionText}>Voltar</Text></TouchableOpacity><TouchableOpacity disabled={!redo.length} onPress={redoEdit} style={[styles.action,!redo.length&&styles.disabled]}><MaterialCommunityIcons name="redo" size={18} color="#fff"/><Text style={styles.actionText}>Refazer</Text></TouchableOpacity><TouchableOpacity onPress={()=>{setCropMode(true);setCropBox(state.crop||{x:10,y:10,w:80,h:80});}} style={styles.action}><MaterialCommunityIcons name="crop" size={18} color="#fff"/><Text style={styles.actionText}>Cortar</Text></TouchableOpacity><TouchableOpacity onPress={reset} style={styles.action}><MaterialCommunityIcons name="restore" size={18} color="#fff"/><Text style={styles.actionText}>Redefinir</Text></TouchableOpacity>{cropMode&&<TouchableOpacity onPress={applyCrop} style={[styles.action,styles.actionActive]}><MaterialCommunityIcons name="check" size={18} color="#fff"/><Text style={styles.actionText}>Aplicar corte</Text></TouchableOpacity>}</View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>{FILTERS.map(([id,label,icon])=><TouchableOpacity key={id} onPress={()=>commit(s=>({...s,filter:id}))} style={[styles.filter,state.filter===id&&styles.filterActive]}><MaterialCommunityIcons name={icon} size={20} color={state.filter===id?'#fff':colors.primary}/><Text style={[styles.filterText,state.filter===id&&{color:'#fff'}]}>{label}</Text></TouchableOpacity>)}</ScrollView>

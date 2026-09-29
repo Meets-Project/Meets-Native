@@ -7,6 +7,7 @@ import { getPublicSpeakerRatingSummary } from '../services/ratingsStorage';
 import { getConnectionStatus, toggleConnection } from '../services/api';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
+import { AvatarImage } from '../components/AvatarImage';
 
 export function SpeakerProfileScreen() {
   const navigation = useNavigation();
@@ -95,7 +96,7 @@ export function SpeakerProfileScreen() {
     <ScrollView contentContainerStyle={screenStyles.listContent} showsVerticalScrollIndicator={false}>
       <View style={screenStyles.profileHeroCard}>
         <View style={screenStyles.profileAvatarWrap}>
-          <Text style={screenStyles.profileAvatar}>{speakerAvatar}</Text>
+          <AvatarImage value={speakerAvatar} size={80} />
         </View>
         <Text style={screenStyles.profileName}>{speakerName}</Text>
         <Text style={screenStyles.profileRole}>Perfil público no Meets</Text>

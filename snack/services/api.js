@@ -52,6 +52,14 @@ export async function signup(name, email, password, avatar) {
   return response.data.user;
 }
 
+export async function sendVerificationEmail() {
+  return (await requestJson('/auth/send-verification', { method: 'POST' })).data;
+}
+
+export async function verifyEmail(token) {
+  return (await requestJson('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) })).data;
+}
+
 export async function getMe() { return (await requestJson('/users/me')).data; }
 export async function updateMe(payload) { return (await requestJson('/users/me', { method: 'PUT', body: JSON.stringify(payload) })).data; }
 export async function search(q) { return (await requestJson(`/search?q=${encodeURIComponent(q)}`)).data; }

@@ -35,6 +35,7 @@ import { SavesScreen } from '../screens/SavesScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { HelpScreen } from '../screens/HelpScreen';
 import { AboutScreen } from '../screens/AboutScreen';
+import { EmailVerificationScreen } from '../screens/EmailVerificationScreen';
 import { menuItems } from '../data/menuItens';
 import { icons } from '../data/icons';
 import { colors } from '../styles/colors';
@@ -132,7 +133,7 @@ export default function AppNavigation() {
     } catch (e) {}
   };
 
-  const authRoutes = new Set(['Loading', 'Login', 'Signup', 'SharedContent']);
+  const authRoutes = new Set(['Loading', 'Login', 'Signup', 'SharedContent', 'EmailVerification']);
   const tabRoutes = new Set(['home', 'search', 'create', 'chat', 'profile']);
   const showChrome = !authRoutes.has(currentRouteName);
   const isSecondaryScreen = showChrome && !tabRoutes.has(currentRouteName);
@@ -175,6 +176,7 @@ export default function AppNavigation() {
           <Stack.Screen name="Loading" component={LoadingScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
+          <Stack.Screen name="EmailVerification" component={EmailVerificationScreen} />
           <Stack.Screen name="MainTabs" component={MainTabs} />
 
           <Stack.Screen name="CreateFlow" component={CreateFlowScreen} />

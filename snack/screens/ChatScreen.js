@@ -27,6 +27,15 @@ export function ChatScreen() {
   const route = useRoute();
   const flatListRef = useRef(null);
 
+  // When the tab is pressed again while already on chat, reset to list view
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      setActiveChat(null);
+      setMessages([]);
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   const [currentUser, setCurrentUser] = useState(null);
   const [chats, setChats] = useState([]);
   const [loadingChats, setLoadingChats] = useState(true);
@@ -64,6 +73,14 @@ export function ChatScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+
+      // If screen is focused without a specific recipient param, return to chat list
+      const { recipientId, chatId } = route.params || {};
+      if (!recipientId && !chatId) {
+        setActiveChat(null);
+        setMessages([]);
+      }
+
       (async () => {
         try {
           const list = await getChats();
@@ -75,7 +92,7 @@ export function ChatScreen() {
       return () => {
         active = false;
       };
-    }, []),
+    }, [route.params]),
   );
 
   // Handle route params (e.g. if opened with a specific user or chat)
