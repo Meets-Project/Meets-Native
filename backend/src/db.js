@@ -6,6 +6,11 @@ const { Pool } = pg;
 const isProduction =
   process.env.NODE_ENV === "production";
 
+const sslDisabled =
+  !isProduction ||
+  (process.env.DATABASE_URL || '').includes('sslmode=disable') ||
+  process.env.PGSSLMODE === 'disable';
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 
@@ -15,11 +20,9 @@ export const pool = new Pool({
 
   connectionTimeoutMillis: 10_000,
 
-  ssl: isProduction
-    ? {
-        rejectUnauthorized: false
-      }
-    : false
+  ssl: sslDisabled
+    ? false
+    : { rejectUnauthorized: false }
 });
 
 pool.on("connect", () => {
