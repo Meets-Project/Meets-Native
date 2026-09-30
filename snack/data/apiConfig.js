@@ -45,6 +45,21 @@ export function getBackendBaseUrl() {
    * do proxy /api.
    */
   if (Platform.OS === 'web') {
+    // Em produção (Vercel/Render Static Site), não existe o proxy
+    // /api do nginx usado pelo Docker local. Por isso usamos a API
+    // pública do Render quando o frontend não está em localhost.
+    if (typeof window !== 'undefined') {
+      const hostname = window.location?.hostname || '';
+      const isLocalhost =
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '0.0.0.0';
+
+      if (!isLocalhost) {
+        return 'https://meets-api-nw0w.onrender.com';
+      }
+    }
+
     return '/api';
   }
 
