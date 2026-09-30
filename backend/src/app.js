@@ -54,7 +54,16 @@ async function sendVerificationMail(email, name, token) {
 }
 
 app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+function buildCorsOrigin() {
+  const raw = (process.env.CORS_ORIGIN || '').trim();
+  if (!raw || raw === '*') return '*';
+  // Support comma-separated list of origins
+  const origins = raw.split(',').map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
+  // If nothing looks like a real URL (e.g. it's a hashed secret), fall back to '*'
+  if (origins.length === 0) return '*';
+  return origins.length === 1 ? origins[0] : origins;
+}
+app.use(cors({ origin: buildCorsOrigin() }));
 app.use(express.json({ limit: '20mb' }));
 
 const credentials = z.object({
