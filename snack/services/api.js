@@ -11,14 +11,30 @@ export function onUnauthorized(handler) {
 
 async function requestJson(path, options = {}) {
   const token = await AsyncStorage.getItem(TOKEN_KEY);
-  const response = await fetch(`${getBackendBaseUrl()}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await fetch(`${getBackendBaseUrl()}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (fetchErr) {
+    const isAbort = fetchErr?.name === 'AbortError';
+    const msg = isAbort
+      ? 'O servidor demorou demais para responder. Aguarde um momento e tente novamente.'
+      : 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.';
+    const err = new Error(msg);
+    err.code = isAbort ? 'TIMEOUT' : 'NETWORK_ERROR';
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   const raw = await response.text();
   let body = null;
   try { body = raw ? JSON.parse(raw) : null; } catch {}
