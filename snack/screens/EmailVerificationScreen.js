@@ -52,7 +52,11 @@ export function EmailVerificationScreen() {
       }
       setResendCooldown(60);
       if (!silent) {
-        setMessage('E-mail reenviado! Verifique sua caixa de entrada.');
+        if (result?.sent === false) {
+          setMessage('Não foi possível enviar o e-mail. Verifique a configuração do servidor.');
+        } else {
+          setMessage('E-mail reenviado! Verifique sua caixa de entrada.');
+        }
       }
     } catch (e) {
       if (!silent) {

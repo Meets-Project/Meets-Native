@@ -22,6 +22,4 @@ snack/web-build/
 snack/npm-debug.*
 snack/yarn-debug.*
 snack/yarn-error.*
-backend/.env.example
-backend/.env.example
-backend/.env.example
+backend/.env
