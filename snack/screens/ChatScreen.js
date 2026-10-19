@@ -13,6 +13,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
+import { AvatarImage } from '../components/AvatarImage';
 import {
   createDirectChat,
   getChatMessages,
@@ -252,7 +253,7 @@ export function ChatScreen() {
             <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
 
-          <Text style={{ fontSize: 24, marginRight: 10 }}>{activeChat.avatar || '👤'}</Text>
+          <AvatarImage value={activeChat.avatar || '👤'} size={40} style={{ marginRight: 10 }} />
 
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{activeChat.name}</Text>
@@ -442,7 +443,7 @@ export function ChatScreen() {
                     style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}
                     onPress={() => handleStartChatWithUser(u)}
                   >
-                    <Text style={{ fontSize: 22, marginRight: 10 }}>{u.avatar || '👤'}</Text>
+                    <AvatarImage value={u.avatar || '👤'} size={36} style={{ marginRight: 10 }} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{u.title}</Text>
                       <Text style={{ fontSize: 12, color: colors.textMuted }}>{u.subtitle}</Text>
@@ -487,7 +488,7 @@ export function ChatScreen() {
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 24 }}>{item.avatar || '👤'}</Text>
+                    <AvatarImage value={item.avatar || '👤'} size={46} />
                   </View>
 
                   <View style={{ flex: 1 }}>

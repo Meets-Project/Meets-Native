@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
 import { search as searchApi } from '../services/api';
+import { AvatarImage } from '../components/AvatarImage';
 
 export function SearchScreen() {
   const navigation = useNavigation();
@@ -47,7 +48,7 @@ export function SearchScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={screenStyles.rowLeft}>
               {item.type === 'user' ? (
-                <Text style={{ fontSize: 24, marginRight: 10 }}>{item.avatar || '👤'}</Text>
+                <AvatarImage value={item.avatar || '👤'} size={40} style={{ marginRight: 10 }} />
               ) : (
                 <MaterialCommunityIcons name="text-box-outline" size={22} color={colors.primary} style={{ marginRight: 10 }} />
               )}

@@ -14,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { addComment, deleteComment, getComments, getMe } from '../services/api';
+import { AvatarImage } from './AvatarImage';
 
 export function CommentsModal({ visible, onClose, targetId, targetTitle = 'Comentários', isEvent = false, onCommentAdded }) {
   const [comments, setComments] = useState([]);
@@ -96,7 +97,7 @@ export function CommentsModal({ visible, onClose, targetId, targetTitle = 'Comen
 
                 return (
                   <View style={styles.commentCard}>
-                    <Text style={styles.avatar}>{item.user_avatar || '👤'}</Text>
+                    <AvatarImage value={item.user_avatar || '👤'} size={32} />
                     <View style={{ flex: 1 }}>
                       <View style={styles.commentHeaderRow}>
                         <Text style={styles.authorName}>{item.user_name || 'Membro'}</Text>

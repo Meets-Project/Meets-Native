@@ -13,6 +13,7 @@ import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
 import { formatLocalDate } from '../utils/masks';
 import { getSaves, toggleSave } from '../services/api';
+import { AvatarImage, isImageUri } from '../components/AvatarImage';
 
 export function SavesScreen() {
   const navigation = useNavigation();
@@ -127,7 +128,7 @@ export function SavesScreen() {
             <View style={screenStyles.sectionCard}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 20 }}>{item.author_avatar || (isEvent ? '📅' : '👤')}</Text>
+                  <AvatarImage value={item.author_avatar || (isEvent ? '📅' : '👤')} size={32} />
                   <View>
                     <Text style={[screenStyles.rowTitle, { fontSize: 13 }]}>{item.author_name || 'Membro'}</Text>
                     <Text style={{ fontSize: 11, color: colors.textMuted }}>
@@ -184,7 +185,7 @@ export function SavesScreen() {
                 {item.content}
               </Text>
 
-              {item.image ? (
+              {isImageUri(item.image) ? (
                 <View style={{ borderRadius: 8, overflow: 'hidden', backgroundColor: colors.primarySoft, marginTop: 6 }}>
                   <Image source={{ uri: item.image }} style={{ width: '100%', height: 180 }} resizeMode="cover" />
                 </View>

@@ -19,6 +19,7 @@ import { addComment, deleteComment, getComments, getEvent, getMe, participateEve
 import { shareContent } from '../services/share';
 import { formatLocalDate } from '../utils/masks';
 import { ReportModal } from '../components/ReportModal';
+import { AvatarImage } from '../components/AvatarImage';
 
 export function EventDetailScreen() {
   const navigation = useNavigation();
@@ -331,7 +332,7 @@ export function EventDetailScreen() {
 
               return (
                 <View key={item.id} style={styles.commentItem}>
-                  <Text style={{ fontSize: 18 }}>{item.user_avatar || '👤'}</Text>
+                  <AvatarImage value={item.user_avatar || '👤'} size={32} />
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{item.user_name}</Text>
