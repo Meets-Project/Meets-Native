@@ -1,16 +1,26 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Text, View, TouchableOpacity, ScrollView, Animated, Dimensions, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { menuDrawerStyles } from '../styles/menuDrawerStyles';
 import { colors } from '../styles/colors';
 import { menuItems } from '../data/menuItens'
 import { useNavigation } from '@react-navigation/native';
+import { getCurrentUser, isAdmin } from '../services/session';
+import { clearToken } from '../services/api';
+import { AvatarImage } from './AvatarImage';
 
 export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
   const navigation = useNavigation();
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Carrega quem está logado ao abrir o menu (nome, foto e se é administrador).
+  useEffect(() => {
+    if (!isOpen) return;
+    getCurrentUser().then(setCurrentUser).catch(() => setCurrentUser(null));
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -53,9 +63,16 @@ export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
   }
 
   const user = {
-    name: 'Você',
-    avatar: '🙂',
+    name: currentUser?.name || 'Você',
+    avatar: currentUser?.avatar || '🙂',
   };
+  const items = isAdmin(currentUser)
+    ? [
+        ...menuItems,
+        { id: 'AdminUsers', label: 'Manter usuários', icon: 'shield-account' },
+        { id: 'AdminReports', label: 'Denúncias', icon: 'flag-outline' },
+      ]
+    : menuItems;
 
   return (
     <>
@@ -96,9 +113,7 @@ export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
             onClose();
           }}
         >
-          <View style={menuDrawerStyles.avatar}>
-            <Text style={menuDrawerStyles.avatarText}>{user.avatar}</Text>
-          </View>
+          <AvatarImage value={user.avatar} size={48} style={menuDrawerStyles.avatar} />
           <View style={{ marginLeft: 12 }}>
             <Text style={menuDrawerStyles.userName}>{user.name}</Text>
             <Text style={menuDrawerStyles.userSub}>Ver perfil</Text>
@@ -106,7 +121,7 @@ export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
         </TouchableOpacity>
 
         <ScrollView style={menuDrawerStyles.content}>
-          {menuItems.map((item) => (
+          {items.map((item) => (
             <TouchableOpacity
                   key={item.id}
                   style={menuDrawerStyles.menuItem}
@@ -137,7 +152,12 @@ export function MenuDrawer({ isOpen, onClose, onSelectItem }) {
         <View style={menuDrawerStyles.footer}>
           <TouchableOpacity
             style={menuDrawerStyles.logoutButton}
-            onPress={() => navigation.navigate('Login')}
+            onPress={async () => {
+              // Sair de verdade: apaga o token salvo e volta para o login.
+              await clearToken();
+              onClose();
+              navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+            }}
           >
             <MaterialCommunityIcons name="logout" size={20} color="#ffffff" />
             <Text style={menuDrawerStyles.logoutText}>Sair</Text>

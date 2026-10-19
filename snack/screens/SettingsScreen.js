@@ -13,7 +13,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
-import { clearToken, getMe, getSettings, updateSettings } from '../services/api';
+import { changePassword, clearToken, deactivateMyAccount, getMe, getSettings, updateSettings } from '../services/api';
+import { confirmAction } from '../utils/confirm';
 import { FormInput } from '../components/FormInput';
 import { validatePassword, validatePasswordMatch } from '../utils/masks';
 import { useTheme } from '../context/ThemeContext';
@@ -27,10 +28,6 @@ export function SettingsScreen() {
   const [settings, setSettings] = useState({
     notifications_enabled: true,
     dark_mode: false,
-    email_alerts: true,
-    sound_enabled: true,
-    public_profile: true,
-    allow_messages: true,
   });
 
   // Password change state
@@ -41,6 +38,12 @@ export function SettingsScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Desativar conta ("Excluir perfil"): a conta é desativada e só um administrador reativa.
+  const [showDeactivate, setShowDeactivate] = useState(false);
+  const [deactivatePassword, setDeactivatePassword] = useState('');
+  const [deactivateError, setDeactivateError] = useState('');
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -117,8 +120,7 @@ export function SettingsScreen() {
 
     setIsChangingPassword(true);
     try {
-      // Simulação / Feedback de sucesso para alteração de senha
-      await new Promise((res) => setTimeout(res, 800));
+      await changePassword(currentPassword, newPassword);
       setPasswordSuccess('Senha alterada com sucesso!');
       setCurrentPassword('');
       setNewPassword('');
@@ -128,6 +130,30 @@ export function SettingsScreen() {
       setPasswordError(e.message || 'Erro ao alterar a senha.');
     } finally {
       setIsChangingPassword(false);
+    }
+  }
+
+  async function handleDeactivateAccount() {
+    setDeactivateError('');
+    if (!deactivatePassword) {
+      setDeactivateError('Informe sua senha para confirmar.');
+      return;
+    }
+    const ok = await confirmAction(
+      'Desativar conta',
+      'Sua conta e seu conteúdo deixarão de aparecer no Meets e você não conseguirá mais entrar. Só um administrador pode reativá-la. Deseja continuar?',
+      'Desativar'
+    );
+    if (!ok) return;
+    setIsDeactivating(true);
+    try {
+      await deactivateMyAccount(deactivatePassword);
+      await clearToken();
+      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    } catch (e) {
+      setDeactivateError(e.message || 'Não foi possível desativar a conta.');
+    } finally {
+      setIsDeactivating(false);
     }
   }
 
@@ -192,8 +218,8 @@ export function SettingsScreen() {
           <View style={screenStyles.rowLeft}>
             <MaterialCommunityIcons name="bell-outline" size={22} color={colors.primary} />
             <View>
-              <Text style={screenStyles.rowTitle}>Notificações Push</Text>
-              <Text style={screenStyles.rowSubtitle}>Avisos sobre eventos e novas mensagens</Text>
+              <Text style={screenStyles.rowTitle}>Notificações</Text>
+              <Text style={screenStyles.rowSubtitle}>Avisos de eventos, mensagens e avaliações no app</Text>
             </View>
           </View>
           <Switch
@@ -204,23 +230,8 @@ export function SettingsScreen() {
           />
         </View>
 
-        <View style={screenStyles.rowItem}>
-          <View style={screenStyles.rowLeft}>
-            <MaterialCommunityIcons name="email-outline" size={22} color={colors.primary} />
-            <View>
-              <Text style={screenStyles.rowTitle}>E-mails de Novidades</Text>
-              <Text style={screenStyles.rowSubtitle}>Resumos semanais da comunidade</Text>
-            </View>
-          </View>
-          <Switch
-            value={settings.email_alerts}
-            onValueChange={(v) => handleToggleSetting('email_alerts', v)}
-            trackColor={{ false: '#d9d9d9', true: colors.primarySoft }}
-            thumbColor={settings.email_alerts ? colors.primary : '#f4f4f4'}
-          />
-        </View>
 
-        <View style={screenStyles.rowItem}>
+        <View style={[screenStyles.rowItem, screenStyles.rowItemLast]}>
           <View style={screenStyles.rowLeft}>
             <MaterialCommunityIcons name="theme-light-dark" size={22} color={colors.primary} />
             <View>
@@ -236,21 +247,6 @@ export function SettingsScreen() {
           />
         </View>
 
-        <View style={[screenStyles.rowItem, screenStyles.rowItemLast]}>
-          <View style={screenStyles.rowLeft}>
-            <MaterialCommunityIcons name="volume-high" size={22} color={colors.primary} />
-            <View>
-              <Text style={screenStyles.rowTitle}>Sons do App</Text>
-              <Text style={screenStyles.rowSubtitle}>Efeitos sonoros ao interagir</Text>
-            </View>
-          </View>
-          <Switch
-            value={settings.sound_enabled}
-            onValueChange={(v) => handleToggleSetting('sound_enabled', v)}
-            trackColor={{ false: '#d9d9d9', true: colors.primarySoft }}
-            thumbColor={settings.sound_enabled ? colors.primary : '#f4f4f4'}
-          />
-        </View>
       </View>
 
       {/* Seção: Segurança & Alterar Senha */}
@@ -342,42 +338,67 @@ export function SettingsScreen() {
         )}
       </View>
 
-      {/* Seção: Privacidade */}
+      {/* Seção: Desativar conta */}
       <View style={[screenStyles.sectionCard, { marginTop: 14 }]}>
-        <Text style={screenStyles.sectionTitle}>Privacidade</Text>
-
-        <View style={screenStyles.rowItem}>
-          <View style={screenStyles.rowLeft}>
-            <MaterialCommunityIcons name="account-eye-outline" size={22} color={colors.primary} />
-            <View>
-              <Text style={screenStyles.rowTitle}>Perfil Público</Text>
-              <Text style={screenStyles.rowSubtitle}>Outros usuários podem ver suas publicações</Text>
-            </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <MaterialCommunityIcons name="account-off-outline" size={22} color="#d93025" />
+            <Text style={screenStyles.sectionTitle}>Desativar Conta</Text>
           </View>
-          <Switch
-            value={settings.public_profile}
-            onValueChange={(v) => handleToggleSetting('public_profile', v)}
-            trackColor={{ false: '#d9d9d9', true: colors.primarySoft }}
-            thumbColor={settings.public_profile ? colors.primary : '#f4f4f4'}
-          />
+          <TouchableOpacity
+            onPress={() => {
+              setShowDeactivate((prev) => !prev);
+              setDeactivateError('');
+              setDeactivatePassword('');
+            }}
+            style={styles.toggleBtn}
+          >
+            <Text style={styles.toggleBtnText}>{showDeactivate ? 'Fechar' : 'Desativar'}</Text>
+            <MaterialCommunityIcons name={showDeactivate ? 'chevron-up' : 'chevron-down'} size={18} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
-        <View style={[screenStyles.rowItem, screenStyles.rowItemLast]}>
-          <View style={screenStyles.rowLeft}>
-            <MaterialCommunityIcons name="chat-processing-outline" size={22} color={colors.primary} />
-            <View>
-              <Text style={screenStyles.rowTitle}>Mensagens Diretas</Text>
-              <Text style={screenStyles.rowSubtitle}>Permitir conexões iniciarem conversas</Text>
-            </View>
+        <Text style={[screenStyles.sectionText, { marginTop: 6 }]}>
+          Sua conta e seu conteúdo deixam de aparecer no Meets. Os dados não são apagados e só um administrador pode reativar a conta.
+        </Text>
+
+        {showDeactivate ? (
+          <View style={{ marginTop: 14 }}>
+            <FormInput
+              label="Confirme sua senha"
+              value={deactivatePassword}
+              onChangeText={setDeactivatePassword}
+              placeholder="Sua senha atual"
+              secureTextEntry
+              leftIcon="lock-outline"
+            />
+
+            {deactivateError ? (
+              <View style={styles.alertBoxError}>
+                <MaterialCommunityIcons name="alert-circle" size={18} color="#d93025" />
+                <Text style={styles.alertTextError}>{deactivateError}</Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.logoutButton, isDeactivating && { opacity: 0.7 }]}
+              onPress={handleDeactivateAccount}
+              disabled={isDeactivating}
+              accessibilityLabel="Desativar minha conta"
+            >
+              {isDeactivating ? (
+                <ActivityIndicator color="#d93025" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="account-off-outline" size={20} color="#d93025" />
+                  <Text style={styles.logoutButtonText}>Desativar minha conta</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
-          <Switch
-            value={settings.allow_messages}
-            onValueChange={(v) => handleToggleSetting('allow_messages', v)}
-            trackColor={{ false: '#d9d9d9', true: colors.primarySoft }}
-            thumbColor={settings.allow_messages ? colors.primary : '#f4f4f4'}
-          />
-        </View>
+        ) : null}
       </View>
+
 
       {/* Seção: Suporte e Informações */}
       <View style={[screenStyles.sectionCard, { marginTop: 14 }]}>

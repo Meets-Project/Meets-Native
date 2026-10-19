@@ -8,6 +8,8 @@ import { getConnectionStatus, toggleConnection, getPublicUser } from '../service
 import { colors } from '../styles/colors';
 import { screenStyles } from '../styles/screenStyles';
 import { AvatarImage } from '../components/AvatarImage';
+import { ReportModal } from '../components/ReportModal';
+import { getCurrentUser } from '../services/session';
 
 export function SpeakerProfileScreen() {
   const navigation = useNavigation();
@@ -18,6 +20,9 @@ export function SpeakerProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [profileUser, setProfileUser] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [showReport, setShowReport] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -26,12 +31,15 @@ export function SpeakerProfileScreen() {
       async function loadData() {
         setIsLoading(true);
         try {
-          const [result, connStatus] = await Promise.all([
+          const [result, connStatus, publicUser] = await Promise.all([
             getPublicSpeakerRatingSummary(speakerId),
             speakerId ? getConnectionStatus(speakerId) : { connected: false },
+            speakerId ? getPublicUser(speakerId).catch(() => null) : null,
           ]);
           if (!isActive) return;
           setSummary(result);
+          setProfileUser(publicUser);
+          getCurrentUser().then((u) => { if (isActive) setCurrentUserId(u?.id || null); }).catch(() => {});
           setIsConnected(Boolean(connStatus?.connected));
         } catch (e) {
           console.error('Erro ao carregar dados do apresentador:', e);
@@ -152,7 +160,26 @@ export function SpeakerProfileScreen() {
             <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>Conversar</Text>
           </TouchableOpacity>
         </View>
+
+        {currentUserId && speakerId && currentUserId !== speakerId ? (
+          <TouchableOpacity
+            onPress={() => setShowReport(true)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}
+            accessibilityLabel="Denunciar perfil"
+          >
+            <MaterialCommunityIcons name="flag-outline" size={16} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, fontWeight: '700' }}>Denunciar perfil</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
+
+      <ReportModal
+        visible={showReport}
+        onClose={() => setShowReport(false)}
+        targetType="user"
+        targetId={speakerId}
+        targetTitle={profileUser?.name || speakerName}
+      />
 
       <View style={screenStyles.sectionCard}>
         <Text style={screenStyles.sectionTitle}>Score publico</Text>

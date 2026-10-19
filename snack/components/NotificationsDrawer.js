@@ -65,6 +65,12 @@ export function NotificationsDrawer({ isOpen, onClose, notifications = [] }) {
       return;
     }
 
+    if (item.target_type === 'report') {
+      onClose();
+      navigation.navigate('AdminReportDetail', { reportId: item.target_id });
+      return;
+    }
+
     if (item.target_type === 'event-rating') {
       onClose();
       navigation.navigate('EventRating', { eventId: item.target_id });

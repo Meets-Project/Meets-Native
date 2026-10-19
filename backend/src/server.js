@@ -1,47 +1,18 @@
 import "dotenv/config";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { app } from "./app.js";
 import { pool } from "./db.js";
+import { runMigrations } from "./migrations.js";
+import { APP_TIMEZONE } from "./services/clock.js";
 
 const port = Number(process.env.PORT || 3333);
+
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  console.warn("ATENÇÃO: JWT_SECRET não definido. Os tokens estão usando uma chave de desenvolvimento; defina JWT_SECRET no ambiente.");
+}
 
 async function checkDatabase() {
   await pool.query("SELECT 1");
   console.log("PostgreSQL conectado com sucesso.");
-}
-
-async function runMigrations() {
-  const dir = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "migrations"
-  );
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS _migrations (
-      filename TEXT PRIMARY KEY,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  const files = (await fs.readdir(dir))
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-  for (const file of files) {
-    const already = await pool.query(
-      "SELECT 1 FROM _migrations WHERE filename=$1",
-      [file]
-    );
-    if (already.rows.length > 0) continue;
-    const sql = (await fs.readFile(path.join(dir, file), "utf8")).replace(
-      /^\uFEFF/,
-      ""
-    );
-    await pool.query(sql);
-    await pool.query("INSERT INTO _migrations (filename) VALUES ($1)", [file]);
-    console.log(`Migration aplicada: ${file}`);
-  }
-  console.log("Migrations verificadas.");
 }
 
 async function notifyFinished() {
@@ -79,10 +50,10 @@ async function notifyFinished() {
           e.event_date IS NOT NULL
           AND e.event_end_time IS NOT NULL
           AND (
-            e.event_date < CURRENT_DATE
+            e.event_date < (NOW() AT TIME ZONE $1)::date
             OR (
-              e.event_date = CURRENT_DATE
-              AND e.event_end_time <= CURRENT_TIME
+              e.event_date = (NOW() AT TIME ZONE $1)::date
+              AND e.event_end_time <= (NOW() AT TIME ZONE $1)::time
             )
           )
 
@@ -108,14 +79,18 @@ async function notifyFinished() {
           AND p.event_date IS NOT NULL
           AND p.event_end_time IS NOT NULL
           AND (
-            p.event_date < CURRENT_DATE
+            p.event_date < (NOW() AT TIME ZONE $1)::date
             OR (
-              p.event_date = CURRENT_DATE
-              AND p.event_end_time <= CURRENT_TIME
+              p.event_date = (NOW() AT TIME ZONE $1)::date
+              AND p.event_end_time <= (NOW() AT TIME ZONE $1)::time
             )
           )
       ) target
       WHERE NOT EXISTS (
+        SELECT 1 FROM settings st
+        WHERE st.user_id = target.user_id AND st.notifications_enabled = FALSE
+      )
+      AND NOT EXISTS (
         SELECT 1
         FROM notifications n
         WHERE
@@ -132,7 +107,7 @@ async function notifyFinished() {
         target_type IS NOT NULL
         AND target_id IS NOT NULL
       DO NOTHING
-    `);
+    `, [APP_TIMEZONE]);
 
     console.log("Notificações de avaliações verificadas.");
   } catch (error) {
@@ -146,7 +121,7 @@ async function notifyFinished() {
 async function boot() {
   try {
     await checkDatabase();
-    await runMigrations();
+    await runMigrations(pool);
 
     const server = app.listen(
       port,

@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../styles/colors';
 import { feedCardStyles } from '../styles/feedCardStyles';
-import { getEventParticipants, participateEvent, toggleConnection, toggleLike, toggleSave } from '../services/api';
+import { adminRemoveContent, getEventParticipants, participateEvent, toggleConnection, toggleLike, toggleSave } from '../services/api';
+import { getCurrentUser, isAdmin } from '../services/session';
+import { confirmAction, notify } from '../utils/confirm';
+import { ContentActionsMenu } from './ContentActionsMenu';
+import { ReportModal } from './ReportModal';
 import { CommentsModal } from './CommentsModal';
 import { shareContent } from '../services/share';
 import { AvatarImage, isImageUri } from './AvatarImage';
@@ -24,6 +28,17 @@ export function FeedCard({ item, onRefresh }) {
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentsCount, setCommentsCount] = useState(Number(item.comments_count || 0));
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [removed, setRemoved] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [sharesCount, setSharesCount] = useState(Number(item.shares_count || 0));
+
+  useEffect(() => {
+    let active = true;
+    getCurrentUser().then((u) => { if (active) setCurrentUser(u); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const isPresentation = item.type === 'presentation';
   const isEvent = item.type === 'event';
@@ -120,14 +135,37 @@ export function FeedCard({ item, onRefresh }) {
     }
   }
 
-  function handleShare() {
-    shareContent({
+  async function handleShare() {
+    const result = await shareContent({
       type: isEvent ? 'event' : isPresentation ? 'presentation' : 'post',
       id: item.id,
       token: item.share_token || '',
       title: item.title || item.content || 'Publicação no Meets',
       text: item.title ? `${item.title} - ${item.content || ''}` : item.content,
     });
+    if (result?.shares !== undefined) setSharesCount(Number(result.shares));
+  }
+
+  const isOwn = Boolean(currentUser?.id && authorId && currentUser.id === authorId);
+  const menuOptions = [];
+  if (currentUser && !isOwn) {
+    menuOptions.push({ id: 'report', label: 'Denunciar', icon: 'flag-outline', onPress: () => setShowReport(true) });
+  }
+  if (isAdmin(currentUser) && !isOwn) {
+    menuOptions.push({ id: 'moderate', label: 'Remover (moderação)', icon: 'delete-alert-outline', danger: true, onPress: handleAdminRemove });
+  }
+
+  async function handleAdminRemove() {
+    const kind = isEvent ? 'evento' : 'publicação';
+    const ok = await confirmAction('Remover conteúdo', `Remover este(a) ${kind} de ${authorName}? O autor será avisado.`, 'Remover');
+    if (!ok) return;
+    try {
+      await adminRemoveContent(isEvent ? 'event' : 'post', item.id, 'Removido pela moderação');
+      setRemoved(true);
+      onRefresh?.();
+    } catch (e) {
+      notify('Erro', e.message || 'Não foi possível remover.');
+    }
   }
 
   function handleOpenMentionedEvent() {
@@ -138,6 +176,8 @@ export function FeedCard({ item, onRefresh }) {
       });
     }
   }
+
+  if (removed) return null;
 
   return (
     <View style={feedCardStyles.card}>
@@ -194,6 +234,12 @@ export function FeedCard({ item, onRefresh }) {
                 {isEvent ? '📅 Evento' : '🎤 Apresentação'}
               </Text>
             </View>
+          ) : null}
+
+          {menuOptions.length ? (
+            <TouchableOpacity onPress={() => setShowMenu(true)} accessibilityLabel="Mais opções" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialCommunityIcons name="dots-vertical" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
           ) : null}
         </View>
       </View>
@@ -400,7 +446,7 @@ export function FeedCard({ item, onRefresh }) {
         {/* COMPARTILHAR */}
         <TouchableOpacity style={feedCardStyles.actionButton} onPress={handleShare}>
           <MaterialCommunityIcons name="share-variant-outline" size={20} color={colors.textMuted} />
-          <Text style={feedCardStyles.actionText}>Compartilhar</Text>
+          <Text style={feedCardStyles.actionText}>{sharesCount > 0 ? sharesCount : 'Compartilhar'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={feedCardStyles.actionButton} onPress={save}>
@@ -425,6 +471,21 @@ export function FeedCard({ item, onRefresh }) {
           <Text style={{ color: colors.primary, fontWeight: '900' }}>Avaliar {isEvent ? 'evento' : 'apresentação'}</Text>
         </TouchableOpacity>
       ) : null}
+
+      <ContentActionsMenu
+        visible={showMenu}
+        onClose={() => setShowMenu(false)}
+        title={item.title || item.content || 'Publicação'}
+        options={menuOptions}
+      />
+
+      <ReportModal
+        visible={showReport}
+        onClose={() => setShowReport(false)}
+        targetType={isEvent ? 'event' : 'post'}
+        targetId={item.id}
+        targetTitle={item.title || item.content}
+      />
 
       {/* Comments Modal */}
       <CommentsModal

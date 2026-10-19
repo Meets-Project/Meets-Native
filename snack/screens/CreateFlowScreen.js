@@ -17,12 +17,6 @@ const copy = {
     text: 'Defina data, horário, local, descrição e imagem do meetup.',
     cta: 'Salvar evento',
   },
-  live: {
-    icon: 'video-plus',
-    title: 'Abrir sala ao vivo',
-    text: 'Inicie uma sala em vídeo para conversar com sua comunidade.',
-    cta: 'Abrir sala',
-  },
   post: {
     icon: 'post-outline',
     title: 'Publicar atualização',

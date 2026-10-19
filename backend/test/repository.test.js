@@ -1,114 +1,13 @@
-import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it, beforeEach } from 'vitest';
 import { newDb } from 'pg-mem';
 import bcrypt from 'bcryptjs';
 import { makeRepository } from '../src/repository.js';
-
-function testDb() {
-  const mem = newDb();
-  mem.public.registerFunction({
-    name: 'gen_random_uuid',
-    impure: true,
-    implementation: () => crypto.randomUUID(),
-  });
-  mem.public.registerFunction({
-    name: 'nullif',
-    implementation: (value, other) => value === other ? null : value,
-  });
-  mem.public.registerFunction({
-    name: 'left',
-    implementation: (value, length) => String(value || '').slice(0, Number(length || 0)),
-  });
-  mem.public.none(`
-    CREATE TABLE users (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(120) NOT NULL,
-      email varchar(255) NOT NULL UNIQUE, password_hash text NOT NULL,
-      role varchar(80) NOT NULL DEFAULT 'Membro', city varchar(120) NOT NULL DEFAULT 'São Paulo', address_number varchar(20) NOT NULL DEFAULT '',
-      avatar varchar(20) NOT NULL DEFAULT '👤', bio text NOT NULL DEFAULT '',
-      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE TABLE posts (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
-      content text NOT NULL, image text, likes integer NOT NULL DEFAULT 0,
-      title varchar(160) NOT NULL DEFAULT '', type varchar(30) NOT NULL DEFAULT 'default',
-      presentation_id varchar(160), visibility varchar(20) NOT NULL DEFAULT 'public', share_token text, event_date date, event_time time, event_end_time time, mentioned_event_id uuid, created_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE TABLE post_likes (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
-    CREATE TABLE favorites (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
-    CREATE TABLE saved_posts (user_id uuid NOT NULL REFERENCES users(id), post_id uuid NOT NULL REFERENCES posts(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
-    CREATE TABLE events (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id),
-      title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', image text,
-      event_date date, event_time time, event_end_time time, location varchar(255) NOT NULL DEFAULT '', visibility varchar(20) NOT NULL DEFAULT 'public', share_token text,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE TABLE saved_events (user_id uuid NOT NULL REFERENCES users(id), event_id uuid NOT NULL REFERENCES events(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,event_id));
-    CREATE TABLE event_participants (event_id uuid NOT NULL REFERENCES events(id), user_id uuid NOT NULL REFERENCES users(id), status varchar(40) NOT NULL DEFAULT 'confirmed', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(event_id,user_id));
-    CREATE TABLE live_rooms (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id), title varchar(160) NOT NULL, description text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE history (id serial PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id), type varchar(40) NOT NULL, title varchar(200) NOT NULL, subtitle varchar(255) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE notifications (id serial PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id), title varchar(160) NOT NULL, body varchar(500) NOT NULL DEFAULT '', target_type varchar(30), target_id text, target_token text, read_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE settings (user_id uuid PRIMARY KEY REFERENCES users(id), notifications_enabled boolean NOT NULL DEFAULT true, dark_mode boolean NOT NULL DEFAULT false, updated_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(160), preview varchar(500), created_at timestamptz DEFAULT now());
-    CREATE TABLE chat_members (chat_id uuid NOT NULL REFERENCES chats(id), user_id uuid NOT NULL REFERENCES users(id), unread integer NOT NULL DEFAULT 0, PRIMARY KEY(chat_id, user_id));
-    CREATE TABLE chat_messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chat_id uuid NOT NULL REFERENCES chats(id), sender_id uuid NOT NULL REFERENCES users(id), content text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE presentation_speakers (
-      presentation_id varchar(160) NOT NULL, speaker_id uuid NOT NULL REFERENCES users(id),
-      created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(presentation_id,speaker_id)
-    );
-    CREATE TABLE presentation_ratings (
-      id serial PRIMARY KEY, presentation_id varchar(160) NOT NULL, post_id uuid,
-      rater_id uuid NOT NULL REFERENCES users(id), speaker_id uuid NOT NULL REFERENCES users(id),
-      stars numeric(2,1) NOT NULL, skills jsonb NOT NULL DEFAULT '{}'::jsonb,
-      comment varchar(1000) NOT NULL DEFAULT '', visibility varchar(20) NOT NULL DEFAULT 'public', created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now(),
-      UNIQUE(presentation_id,rater_id,speaker_id)
-    );
-    CREATE TABLE content_audience (content_type varchar(20) NOT NULL, content_id text NOT NULL, user_id uuid NOT NULL REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(content_type,content_id,user_id));
-    CREATE TABLE user_connections (
-      user_id uuid NOT NULL REFERENCES users(id), connected_user_id uuid NOT NULL REFERENCES users(id),
-      created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id, connected_user_id)
-    );
-    CREATE TABLE event_ratings (id serial PRIMARY KEY, event_id uuid NOT NULL REFERENCES events(id), rater_id uuid NOT NULL REFERENCES users(id), stars numeric(2,1) NOT NULL, comment varchar(1000) NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(event_id,rater_id));
-    CREATE TABLE post_comments (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      post_id uuid REFERENCES posts(id) ON DELETE CASCADE,
-      event_id uuid REFERENCES events(id) ON DELETE CASCADE,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      content text NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  const { Pool } = mem.adapters.createPg();
-  return new Pool();
-}
+import { applyMigrations, createTestDb, registerPgMemFunctions } from './helpers.js';
 
 it('applies migration schema for visibility, audience and notification targets', async () => {
   const mem = newDb();
-  mem.public.registerFunction({
-    name: 'gen_random_uuid',
-    impure: true,
-    implementation: () => crypto.randomUUID(),
-  });
-  mem.public.registerFunction({
-    name: 'nullif',
-    implementation: (value, other) => value === other ? null : value,
-  });
-  mem.public.registerFunction({
-    name: 'left',
-    implementation: (value, length) => String(value || '').slice(0, Number(length || 0)),
-  });
-
-  const migrationDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
-  const migrationFiles = (await fs.readdir(migrationDir)).filter((file) => file.endsWith('.sql')).sort();
-  for (const file of migrationFiles) {
-    const sql = (await fs.readFile(path.join(migrationDir, file), 'utf8'))
-      .replace(/CREATE EXTENSION IF NOT EXISTS pgcrypto;?/gi, '')
-      .replace(/UPDATE posts SET title[\s\S]*?WHERE title = '';?/i, '');
-    await mem.public.none(sql);
-  }
+  registerPgMemFunctions(mem);
+  await applyMigrations(mem);
 
   const visible = await mem.public.query(`SELECT column_name FROM information_schema.columns WHERE table_name='events' AND column_name='visibility'`);
   expect(visible.rows.some((row) => row.column_name === 'visibility')).toBe(true);
@@ -123,7 +22,7 @@ it('applies migration schema for visibility, audience and notification targets',
 describe('Meets persistence and features', () => {
   let db, repo, user, other;
   beforeEach(async () => {
-    db = testDb();
+    ({ db } = await createTestDb());
     repo = makeRepository(db);
     user = await repo.createUser({name:'Teste',email:'teste@example.com',passwordHash:await bcrypt.hash('123456',4)});
     other = await repo.createUser({name:'Outro',email:'outro@example.com',passwordHash:await bcrypt.hash('123456',4)});

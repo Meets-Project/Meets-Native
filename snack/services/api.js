@@ -3,6 +3,7 @@ import { getBackendBaseUrl } from '../data/apiConfig';
 
 const TOKEN_KEY = '@meets/auth_token';
 let unauthorizedHandler = null;
+let tokenChangeHandler = null;
 
 export function onUnauthorized(handler) {
   unauthorizedHandler = handler;
@@ -45,6 +46,7 @@ async function requestJson(path, options = {}) {
     error.details = body?.details;
     if (response.status === 401) {
       await AsyncStorage.removeItem(TOKEN_KEY);
+      tokenChangeHandler?.();
       try { unauthorizedHandler?.(); } catch {}
     }
     throw error;
@@ -52,8 +54,9 @@ async function requestJson(path, options = {}) {
   return body;
 }
 
-export async function setToken(token) { await AsyncStorage.setItem(TOKEN_KEY, token); }
-export async function clearToken() { await AsyncStorage.removeItem(TOKEN_KEY); }
+export function onTokenChange(handler) { tokenChangeHandler = handler; }
+export async function setToken(token) { await AsyncStorage.setItem(TOKEN_KEY, token); tokenChangeHandler?.(); }
+export async function clearToken() { await AsyncStorage.removeItem(TOKEN_KEY); tokenChangeHandler?.(); }
 export async function hasToken() { return !!(await AsyncStorage.getItem(TOKEN_KEY)); }
 
 export async function login(email, password) {
@@ -78,6 +81,12 @@ export async function verifyEmail(token) {
 
 export async function getMe() { return (await requestJson('/users/me')).data; }
 export async function getPublicUser(userId) { return (await requestJson(`/users/${encodeURIComponent(userId)}/public`)).data; }
+export async function changePassword(currentPassword, newPassword) {
+  return (await requestJson('/users/me/password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) })).data;
+}
+export async function deactivateMyAccount(password, reason = '') {
+  return (await requestJson('/users/me/deactivate', { method: 'POST', body: JSON.stringify({ password, reason }) })).data;
+}
 export async function updateMe(payload) { return (await requestJson('/users/me', { method: 'PUT', body: JSON.stringify(payload) })).data; }
 export async function search(q) { return (await requestJson(`/search?q=${encodeURIComponent(q)}`)).data; }
 
@@ -213,3 +222,37 @@ export async function deleteComment(commentId) {
 }
 
 export async function getMyPosts() { return (await requestJson('/posts/mine')).data; }
+
+// --- ADMINISTRAÇÃO (somente administradores) ---
+function queryString(params = {}) {
+  const q = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');
+  return q.length ? `?${q.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')}` : '';
+}
+export async function adminListUsers(params = {}) { return (await requestJson(`/admin/users${queryString(params)}`)).data; }
+export async function adminGetUser(id) { return (await requestJson(`/admin/users/${encodeURIComponent(id)}`)).data; }
+export async function adminCreateUser(payload) { return (await requestJson('/admin/users', { method: 'POST', body: JSON.stringify(payload) })).data; }
+export async function adminUpdateUser(id, payload) { return (await requestJson(`/admin/users/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })).data; }
+export async function adminDeactivateUser(id, reason = '') { return (await requestJson(`/admin/users/${encodeURIComponent(id)}/deactivate`, { method: 'POST', body: JSON.stringify({ reason }) })).data; }
+export async function adminReactivateUser(id) { return (await requestJson(`/admin/users/${encodeURIComponent(id)}/reactivate`, { method: 'POST', body: JSON.stringify({}) })).data; }
+export async function adminRemoveContent(type, id, reason = '') {
+  const path = type === 'event' ? `/events/${encodeURIComponent(id)}` : `/posts/${encodeURIComponent(id)}`;
+  return (await requestJson(path, { method: 'DELETE', body: JSON.stringify({ reason }) })).data;
+}
+
+// --- DENÚNCIAS ---
+export async function createReport(payload) { return (await requestJson('/reports', { method: 'POST', body: JSON.stringify(payload) })).data; }
+export async function adminListReports(status = 'open') { return (await requestJson(`/admin/reports${queryString({ status })}`)).data; }
+export async function adminGetReport(id) { return (await requestJson(`/admin/reports/${encodeURIComponent(id)}`)).data; }
+export async function adminStartReport(id) { return (await requestJson(`/admin/reports/${encodeURIComponent(id)}/start`, { method: 'POST', body: JSON.stringify({}) })).data; }
+export async function adminDecideReport(id, payload) { return (await requestJson(`/admin/reports/${encodeURIComponent(id)}/decide`, { method: 'POST', body: JSON.stringify(payload) })).data; }
+
+// --- COMPARTILHAMENTOS ---
+export async function registerShare(contentType, contentId) {
+  return (await requestJson('/shares', { method: 'POST', body: JSON.stringify({ contentType, contentId }) })).data;
+}
+
+// --- RANKING E DASHBOARDS ---
+export async function getRanking(days = 0) { return (await requestJson(`/ranking${days ? `?days=${days}` : ''}`)).data; }
+export async function getDashboard({ scope = 'me', days = 0 } = {}) {
+  return (await requestJson(`/dashboard${queryString({ scope, days: days || undefined })}`)).data;
+}

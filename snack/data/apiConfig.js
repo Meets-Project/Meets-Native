@@ -67,7 +67,7 @@ export function getBackendBaseUrl() {
    * Android Emulator local.
    */
   const host = getDefaultHost();
-  const port = '3334';
+  const port = '3333';
 
   return `http://${host}:${port}`;
 }

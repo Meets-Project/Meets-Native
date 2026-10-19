@@ -1,4 +1,5 @@
 ﻿import { Alert, Platform, Share } from 'react-native';
+import { registerShare } from './api';
 
 export function getShareUrl(type, id, token = '') {
   let origin = process.env.EXPO_PUBLIC_WEB_URL || 'http://localhost:8080';
@@ -11,6 +12,12 @@ export function getShareUrl(type, id, token = '') {
 
 export async function shareContent({ type = 'post', id = '', token = '', title = 'Meets', text = '' }) {
   const url = getShareUrl(type, id, token);
+
+  // Registra o compartilhamento para as estatísticas (não impede o compartilhamento se falhar).
+  let registered = null;
+  if (id) {
+    try { registered = await registerShare(type, id); } catch (_) {}
+  }
   const shareMessage = `Confira no Meets: ${url}`;
 
   // Tenta copiar para o Clipboard
@@ -30,7 +37,7 @@ export async function shareContent({ type = 'post', id = '', token = '', title =
         message: shareMessage,
         url,
       });
-      return;
+      return registered;
     } catch (_) {}
   }
 
@@ -39,4 +46,5 @@ export async function shareContent({ type = 'post', id = '', token = '', title =
   } else {
     Alert.alert('Compartilhar', `Link para compartilhar:\n\n${url}`);
   }
+  return registered;
 }

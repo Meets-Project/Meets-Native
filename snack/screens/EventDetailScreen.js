@@ -18,6 +18,7 @@ import { colors } from '../styles/colors';
 import { addComment, deleteComment, getComments, getEvent, getMe, participateEvent, toggleSaveEvent } from '../services/api';
 import { shareContent } from '../services/share';
 import { formatLocalDate } from '../utils/masks';
+import { ReportModal } from '../components/ReportModal';
 
 export function EventDetailScreen() {
   const navigation = useNavigation();
@@ -33,6 +34,7 @@ export function EventDetailScreen() {
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
     getMe().then((u) => setCurrentUserId(u?.id)).catch(() => {});
@@ -295,6 +297,25 @@ export function EventDetailScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {currentUserId && event?.author?.id && event.author.id !== currentUserId ? (
+        <TouchableOpacity
+          onPress={() => setShowReport(true)}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 }}
+          accessibilityLabel="Denunciar evento"
+        >
+          <MaterialCommunityIcons name="flag-outline" size={16} color={colors.textMuted} />
+          <Text style={{ color: colors.textMuted, fontWeight: '700' }}>Denunciar evento</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <ReportModal
+        visible={showReport}
+        onClose={() => setShowReport(false)}
+        targetType="event"
+        targetId={eventId}
+        targetTitle={event?.title}
+      />
 
       {/* Comments Section */}
       <View style={screenStyles.sectionCard}>
